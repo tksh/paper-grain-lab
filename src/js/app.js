@@ -44,26 +44,17 @@
       ja: "Paper Grain Lab — SVGフィルターによる紙質感シミュレーター",
       en: "Paper Grain Lab — An SVG-Filter Paper Texture Simulator"
     },
-    pageIntro: {
-      ja: `3つの参考CodePenで使われているSVGフィルター手法を分析し、共通の処理段（パイプライン）へと統合した紙質感シミュレーターです。7つの基本プリセットと詳細パラメータの組み合わせだけで、参考ページの41種のうち指定された10種の紙を含む幅広い質感を再現できます（<code>&lt;feXxx&gt;</code>フィルター要素のみを使うという方針上、<code>&lt;pattern&gt;</code>要素が必須なLinen Paperのみ対象外としています）。`,
-      en: `A paper-texture simulator built by analyzing the SVG filter techniques used across three reference CodePens and unifying them into one shared pipeline. Seven basic presets, combined with detailed parameters, can reproduce a wide range of textures — including 10 of the 41 named papers from the reference page (Linen Paper is the sole exception, excluded because reproducing it faithfully requires an SVG <code>&lt;pattern&gt;</code> element, which conflicts with this project's hard rule of using only <code>&lt;feXxx&gt;</code> filter elements).`
-    },
     originalsTitle: { ja:"オリジナルプリセット", en:"Original Presets" },
-    originalsDesc: {
-      ja:"上記の基本プリセット・紙見本レシピを精査し、技術的にほぼ同じ結果になる重複（例: 基本プリセットの抽象名と、それと同一設定のレシピ）を整理して一本化した上で、実際のWebアプリへ本番実装するための独自プリセット集です。すべての項目に抽象的な段階名ではなく具体的な紙の名前を付けています。",
-      en:`A curated set for actual production use in your own web app, built by reviewing the basic presets and sample recipes above and merging near-duplicates that are technically almost identical (e.g. an abstractly-named basic preset and a recipe that produces the exact same result). Every entry here is named after a concrete paper — never an abstract stage name.`
-    },
     paramsTitle: { ja:"詳細パラメータ", en:"Detailed Parameters" },
     paramsDesc: {
-      ja:"各処理段をここで細かく調整できます。プリセット／レシピを読み込んだ直後の状態から、自由に微調整してください。項目名の横のドットはそのカテゴリが使いうるSVGフィルター要素を常に示し、現在オフ・未使用のものは薄く表示されます（閉じていても分かります）。",
-      en:`Fine-tune every processing stage here. Start from whatever a preset or recipe just loaded, then adjust freely. The dots next to each category name always show which SVG filter elements that category can use — the ones currently off or unused are dimmed — so you can tell at a glance even while the section is collapsed.`
+      ja:"各処理段をここで細かく調整できます。プリセットを読み込んだ直後の状態から、自由に微調整してください。項目名の横のドットはそのカテゴリが使いうるSVGフィルター要素を常に示し、現在オフ・未使用のものは薄く表示されます（閉じていても分かります）。",
+      en:`Fine-tune every processing stage here. Start from whatever a preset just loaded, then adjust freely. The dots next to each category name always show which SVG filter elements that category can use — the ones currently off or unused are dimmed — so you can tell at a glance even while the section is collapsed.`
     },
     codeHeadLabel: { ja:"SVGソースコード（実際に描画されている内容そのもの）", en:"SVG Source Code (exactly what's rendered above)" },
     copyBtn: { ja:"コピー", en:"Copy" },
     copySuccess: { ja:"コピーしました", en:"Copied" },
     copyFail: { ja:"コピーできませんでした", en:"Copy failed" },
     loadBtn: { ja:"読み込む", en:"Load" },
-    tagOriginal: { ja:"オリジナルプリセット", en:"Original preset" },
     metaBodyOriginal: {
       ja:"この状態から「詳細パラメータ」で自由に調整できます。",
       en:`From this starting point, adjust anything freely under "Detailed Parameters."`
@@ -664,7 +655,6 @@
 
   /* ---------- original list ---------- */
   const originalList = document.getElementById("originalList");
-  const metaTag = document.getElementById("metaTag");
   const metaName = document.getElementById("metaName");
   const metaBody = document.getElementById("metaBody");
 
@@ -672,7 +662,6 @@
 
   function refreshMetaPanel(){
     const sel = currentSelection;
-    metaTag.textContent = T(UI.tagOriginal);
     metaName.textContent = T(sel.item.label);
     metaBody.textContent = T(UI.metaBodyOriginal);
   }
