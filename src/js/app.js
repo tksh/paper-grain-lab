@@ -709,7 +709,7 @@
     // Key attributes to show when section status changes
     const keyAttributes = {
       weave: ["weave.blend"],
-      pulp: ["pulp.fiberFreq", "pulp.fiberOctaves", "pulp.blur"],
+      pulp: ["pulp.fiberFreq", "pulp.fiberOctaves", "pulp.blur", "pulp.fiberAlpha"],
       distort: ["distort.freq", "distort.octaves", "distort.scale"]
     };
     
