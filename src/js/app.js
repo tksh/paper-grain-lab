@@ -56,8 +56,16 @@
     copyFail: { ja:"コピーできませんでした", en:"Copy failed" },
     loadBtn: { ja:"読み込む", en:"Load" },
     metaBodyOriginal: {
-      ja:"この状態から「詳細パラメータ」で自由に調整できます。",
-      en:`From this starting point, adjust anything freely under "Detailed Parameters."`
+      ja:"パラメータは調整されていません",
+      en:`No parameters adjusted`
+    },
+    additionalAdjustmentsTitle: {
+      ja:"追加の調整項目:",
+      en:`Additional adjustment parameters:`
+    },
+    disabledText: {
+      ja:"Disabled",
+      en:"Disabled"
     },
     footerNote: {
       ja: `参考: [1] <a href="https://codepen.io/ol-ivier/pen/raWowqp" target="_blank" rel="noopener noreferrer">Paper Textures — Pure SVG &amp; CSS</a>（41種のfeTurbulence/feColorMatrix等を使った紙質感コレクション）／ [2] <a href="https://codepen.io/imhalid/pen/WbeEomq" target="_blank" rel="noopener noreferrer">Paper Texture Background</a>（feTurbulence→feDiffuseLighting→feDisplacementMapで「破れた縁」を作る手法）／ [3] <a href="https://codepen.io/mpldesign/pen/DexRwL" target="_blank" rel="noopener noreferrer">Simplified Rough Paper Texture</a>（feTurbulence→feDiffuseLightingのみの最小構成）。本ラボはこれら3手法を「ノイズ生成 → 織り目/繊維の重ね合わせ → 歪み → ライティング → 色付け → 合成」という単一のパイプラインに統合し、CSSを介さず純粋なSVGフィルターだけで表現しています。`,
@@ -451,7 +459,7 @@
             ["diffuse", {ja:"拡散反射（マット）", en:"Diffuse (matte)"}],
             ["specular", {ja:"鏡面反射（光沢）", en:"Specular (glossy)"}],
             ["none", {ja:"なし", en:"None"}]
-          ] },
+          ], anno:{ chain:["feDiffuseLighting/feSpecularLighting"], attr:"mode" } },
         { bind:"light.surfaceScale", label:{ja:"凹凸の高さ",en:"Relief height"}, type:"range", min:0.1, max:6, step:0.1, anno:{ chain:["feDiffuseLighting/feSpecularLighting"], attr:"surfaceScale" } },
         { bind:"light.azimuth", label:{ja:"光源の方位角",en:"Light azimuth"}, type:"range", min:0, max:360, step:1, anno:{ chain:["feDiffuseLighting/feSpecularLighting","feDistantLight"], attr:"azimuth" } },
         { bind:"light.elevation", label:{ja:"光源の高度",en:"Light elevation"}, type:"range", min:5, max:90, step:1, anno:{ chain:["feDiffuseLighting/feSpecularLighting","feDistantLight"], attr:"elevation" } },
@@ -648,6 +656,7 @@
         else val = input.value;
         setPath(state, path, val);
         syncDisplay(input);
+        refreshMetaPanel(); // Update changed parameters display
         render();
       });
     });
@@ -659,11 +668,191 @@
   const metaBody = document.getElementById("metaBody");
 
   let currentSelection = { type:"original", item:ORIGINALS[0] };
+  let initialState = deepClone(state); // Track initial state when preset is loaded
+
+  function getChangedParameters(currentState, initial){
+    if (!initial) return [];
+    const changes = [];
+    
+    // Build section number map first
+    const sectionNumberMap = {};
+    SECTIONS.forEach((section, index) => {
+      const titleMatch = section.title.ja.match(/^(\d+)\./);
+      sectionNumberMap[section.key] = titleMatch ? parseInt(titleMatch[1]) : index + 1;
+    });
+    
+    // Create a mapping of bind paths to display info
+    const paramMap = {};
+    const sectionFieldMap = {}; // Map section keys to their fields
+    
+    SECTIONS.forEach((section, index) => {
+      sectionFieldMap[section.key] = section.fields;
+      section.fields.forEach(field => {
+        if (field.anno) {
+          const filterChain = field.anno.chain;
+          // Get colors for each filter in the chain
+          const filterColors = filterChain.map(filter => ELEMENT_COLORS[filter] || "#888");
+          paramMap[field.bind] = {
+            filter: filterChain.join(" → "),
+            filterColors: filterColors,
+            attr: field.anno.attr,
+            label: T(field.label),
+            sectionKey: section.key,
+            sectionNumber: sectionNumberMap[section.key]
+          };
+        }
+      });
+    });
+    
+    // Check for enabled/disabled sections
+    const enabledSections = ["weave", "pulp", "distort"];
+    // Key attributes to show when section status changes
+    const keyAttributes = {
+      weave: ["weave.blend"],
+      pulp: ["pulp.fiberFreq", "pulp.fiberOctaves", "pulp.blur"],
+      distort: ["distort.freq", "distort.octaves", "distort.scale"]
+    };
+    
+    // Track which paths we've already handled via section enable/disable
+    const handledPaths = new Set();
+    
+    enabledSections.forEach(sectionKey => {
+      const wasEnabled = getPath(initial, `${sectionKey}.enabled`);
+      const isEnabled = getPath(currentState, `${sectionKey}.enabled`);
+      
+      if (wasEnabled !== isEnabled) {
+        // Section enable/disable changed - show key attributes
+        const keyAttrs = keyAttributes[sectionKey] || [];
+        keyAttrs.forEach(attrPath => {
+          const info = paramMap[attrPath];
+          if (info) {
+            handledPaths.add(attrPath);
+            changes.push({
+              path: attrPath,
+              filter: info.filter,
+              filterColors: info.filterColors,
+              attr: info.attr,
+              label: info.label,
+              sectionNumber: info.sectionNumber,
+              oldValue: wasEnabled ? getPath(initial, attrPath) : undefined,
+              newValue: isEnabled ? getPath(currentState, attrPath) : "Disabled",
+              isDisabled: !isEnabled
+            });
+          }
+        });
+      }
+    });
+    
+    // Check for mode changes in light and tint sections
+    const modeChanges = [
+      { path: "light.mode", filter: "feDiffuseLighting/feSpecularLighting", attr: "mode", sectionKey: "light" },
+      { path: "tint.mode", filter: "feColorMatrix", attr: "mode", sectionKey: "tint" }
+    ];
+    
+    modeChanges.forEach(({ path, filter, attr, sectionKey }) => {
+      const oldMode = getPath(initial, path);
+      const newMode = getPath(currentState, path);
+      if (oldMode !== newMode) {
+        handledPaths.add(path);
+        const sectionNumber = sectionNumberMap[sectionKey] || 1;
+        
+        changes.push({
+          path: path,
+          filter: filter,
+          filterColors: [ELEMENT_COLORS[filter] || "#888"],
+          attr: attr,
+          label: path,
+          sectionNumber: sectionNumber,
+          oldValue: oldMode,
+          newValue: newMode,
+          isDisabled: newMode === "none"
+        });
+      }
+    });
+    
+    // Compare current state with initial state for other changes
+    function compare(obj1, obj2, path){
+      for (const key in obj1){
+        const currentPath = path ? `${path}.${key}` : key;
+        const val1 = obj1[key];
+        const val2 = obj2[key];
+        
+        // Skip enabled fields and already handled paths
+        if (currentPath.endsWith(".enabled")) continue;
+        if (handledPaths.has(currentPath)) continue;
+        
+        if (val1 && typeof val1 === "object" && !Array.isArray(val1)){
+          if (val2 && typeof val2 === "object" && !Array.isArray(val2)){
+            compare(val1, val2, currentPath);
+          }
+        } else if (val1 !== val2){
+          const info = paramMap[currentPath];
+          if (info){
+            changes.push({
+              path: currentPath,
+              filter: info.filter,
+              filterColors: info.filterColors,
+              attr: info.attr,
+              label: info.label,
+              sectionNumber: info.sectionNumber,
+              oldValue: val2,
+              newValue: val1
+            });
+          }
+        }
+      }
+    }
+    
+    compare(currentState, initial, "");
+    return changes;
+  }
 
   function refreshMetaPanel(){
     const sel = currentSelection;
     metaName.textContent = T(sel.item.label);
-    metaBody.textContent = T(UI.metaBodyOriginal);
+    
+    const changes = getChangedParameters(state, initialState);
+    if (changes.length === 0){
+      metaBody.textContent = T(UI.metaBodyOriginal);
+    } else {
+      metaBody.innerHTML = "";
+      
+      // Add heading
+      const heading = document.createElement("div");
+      heading.className = "change-heading";
+      heading.textContent = T(UI.additionalAdjustmentsTitle);
+      metaBody.appendChild(heading);
+      
+      // Add change list
+      const changeList = document.createElement("div");
+      changeList.className = "change-list";
+      
+      changes.forEach(change => {
+        const item = document.createElement("div");
+        item.className = "change-item";
+        
+        // Create colored badges for each filter in the chain
+        const filterNames = change.filter.split(" → ");
+        const filterBadges = filterNames.map((filterName, i) => {
+          const color = change.filterColors[i] || "#888";
+          return `<span class="change-filter-badge" style="background:${color}">${filterName}</span>`;
+        }).join('<span class="change-sep">›</span>');
+        
+        // Use "Disabled" text for disabled sections
+        const displayValue = change.isDisabled ? T(UI.disabledText) : change.newValue;
+        const valueClass = change.isDisabled ? "change-value-disabled" : "change-value";
+        
+        item.innerHTML = `
+          <span class="change-section-number">${change.sectionNumber}</span>
+          <div class="change-filters">${filterBadges}</div>
+          <span class="change-attr">${change.attr}</span>
+          <span class="${valueClass}">${displayValue}</span>
+        `;
+        changeList.appendChild(item);
+      });
+      
+      metaBody.appendChild(changeList);
+    }
   }
 
   function loadOriginal(r){
@@ -671,6 +860,7 @@
     state = deepClone(DEFAULTS);
     deepMerge(state, basePreset.state);
     deepMerge(state, r.state);
+    initialState = deepClone(state); // Save initial state
     currentSelection = { type:"original", item:r };
     setControlsFromState();
     refreshMetaPanel();
@@ -755,5 +945,15 @@
   applyStaticI18n();
   buildOriginalList();
   buildParamsUI();
-  loadOriginal(ORIGINALS[0]);
+  // Initialize with first preset but don't set initialState yet
+  const firstOriginal = ORIGINALS[0];
+  const basePreset = PRESETS.find(p=>p.key===firstOriginal.base);
+  state = deepClone(DEFAULTS);
+  deepMerge(state, basePreset.state);
+  deepMerge(state, firstOriginal.state);
+  initialState = deepClone(state); // Set initial state after first load
+  currentSelection = { type:"original", item:firstOriginal };
+  setControlsFromState();
+  refreshMetaPanel();
+  render();
 })();
