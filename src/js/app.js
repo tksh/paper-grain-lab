@@ -804,6 +804,14 @@
     }
     
     compare(currentState, initial, "");
+    
+    // Sort changes by section number to match SVG filter pipeline order
+    changes.sort((a, b) => {
+      const numA = a.sectionNumber || 999;
+      const numB = b.sectionNumber || 999;
+      return numA - numB;
+    });
+    
     return changes;
   }
 
