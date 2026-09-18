@@ -12,6 +12,11 @@
     if (Number.isNaN(n)) return "0";
     return parseFloat(n.toFixed(4)).toString();
   }
+  function noiseBaseFrequency(st){
+    return st.noise.anisotropic
+      ? `${fmt(st.noise.freqX)} ${fmt(st.noise.freqY)}`
+      : fmt(st.noise.freqX);
+  }
   function hexToRgb01(hex){
     hex = (hex || "#000000").replace("#","");
     if (hex.length === 3) hex = hex.split("").map(c=>c+c).join("");
@@ -113,7 +118,7 @@
     L(2, `<filter id="fp-filter" x="-20%" y="-20%" width="140%" height="140%">`);
 
     let cur = "noise1";
-    const freqA = st.noise.anisotropic ? `${fmt(st.noise.freqX)} ${fmt(st.noise.freqY)}` : fmt(st.noise.freqX);
+    const freqA = noiseBaseFrequency(st);
     L(3, `<feTurbulence type="${st.noise.type}" baseFrequency="${freqA}" numOctaves="${st.noise.octaves}" seed="${st.noise.seed}" result="noise1"/>`);
 
     if (st.weave.enabled){
@@ -644,6 +649,15 @@
       else input.value = v;
       syncDisplay(input);
     });
+    syncNoiseFrequencyYControl();
+  }
+
+  function syncNoiseFrequencyYControl(){
+    const input = document.querySelector('[data-bind="noise.freqY"]');
+    if (!input) return;
+    const disabled = !state.noise.anisotropic;
+    input.disabled = disabled;
+    input.closest(".field").classList.toggle("is-disabled", disabled);
   }
 
   function bindInputs(){
@@ -656,6 +670,7 @@
         else val = input.value;
         setPath(state, path, val);
         syncDisplay(input);
+        if (path === "noise.anisotropic") syncNoiseFrequencyYControl();
         refreshMetaPanel(); // Update changed parameters display
         render();
       });
@@ -713,8 +728,28 @@
       distort: ["distort.freq", "distort.octaves", "distort.scale"]
     };
     
-    // Track which paths we've already handled via section enable/disable
+    // Track paths that have specialized display handling.
     const handledPaths = new Set();
+
+    // noise.freqX, noise.freqY, and noise.anisotropic together produce one
+    // SVG attribute, so track their effective rendered value as one change.
+    const initialNoiseFrequency = noiseBaseFrequency(initial);
+    const currentNoiseFrequency = noiseBaseFrequency(currentState);
+    ["noise.anisotropic", "noise.freqX", "noise.freqY"].forEach(path=>{
+      handledPaths.add(path);
+    });
+    if (currentNoiseFrequency !== initialNoiseFrequency){
+      changes.push({
+        path: "noise.baseFrequency",
+        filter: "feTurbulence",
+        filterColors: [ELEMENT_COLORS.feTurbulence],
+        attr: "baseFrequency",
+        label: "baseFrequency",
+        sectionNumber: sectionNumberMap.noise,
+        oldValue: initialNoiseFrequency,
+        newValue: currentNoiseFrequency
+      });
+    }
     
     enabledSections.forEach(sectionKey => {
       const wasEnabled = getPath(initial, `${sectionKey}.enabled`);
