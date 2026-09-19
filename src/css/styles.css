@@ -78,7 +78,7 @@ header.top p{
 }
 @media (min-width: 1400px){
   .workspace{
-    grid-template-columns: 300px minmax(0,1fr) minmax(0,1fr);
+    grid-template-columns: 300px minmax(0,.7fr) minmax(0,1.3fr);
     grid-template-areas: "rail params preview";
   }
 }
