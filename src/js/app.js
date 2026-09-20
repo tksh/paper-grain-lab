@@ -695,15 +695,48 @@
       else input.value = v;
       syncDisplay(input);
     });
-    syncNoiseFrequencyYControl();
+    syncConditionalControls();
   }
 
-  function syncNoiseFrequencyYControl(){
-    const input = document.querySelector('[data-bind="noise.freqY"]');
+  function setFieldDisabled(bind, disabled){
+    const input = document.querySelector(`[data-bind="${bind}"]`);
     if (!input) return;
-    const disabled = !state.noise.anisotropic;
     input.disabled = disabled;
-    input.closest(".field").classList.toggle("is-disabled", disabled);
+    const field = input.closest(".field");
+    if (field) field.classList.toggle("is-disabled", disabled);
+  }
+
+  function syncConditionalControls(){
+    // Same UX pattern as Frequency Y: gray out whatever the current
+    // toggle / mode selection leaves unused.
+    setFieldDisabled("noise.freqY", !state.noise.anisotropic);
+
+    // "Enable" toggles: gray out everything else in the section while off.
+    setFieldDisabled("weave.blend", !state.weave.enabled);
+    ["pulp.fiberFreq","pulp.fiberOctaves","pulp.blur","pulp.fiberAlpha"].forEach(b=>
+      setFieldDisabled(b, !state.pulp.enabled));
+    ["distort.freq","distort.octaves","distort.scale"].forEach(b=>
+      setFieldDisabled(b, !state.distort.enabled));
+
+    // Light mode: "none" uses no lighting params, "diffuse" uses all
+    // except highlight sharpness, "specular" uses all.
+    const lightOff = state.light.mode === "none";
+    setFieldDisabled("light.surfaceScale", lightOff);
+    setFieldDisabled("light.azimuth", lightOff);
+    setFieldDisabled("light.elevation", lightOff);
+    setFieldDisabled("light.color", lightOff);
+    setFieldDisabled("light.specExp", lightOff || state.light.mode !== "specular");
+
+    // Tint mode: only the params the selected mode reads stay enabled.
+    // (mapping mirrors generateSVG: alpha->grainAlpha;
+    // stainMottle/stainSpots->color+slope+bias;
+    // stainHaze->color+grainAlpha; table->levels; none->nothing)
+    const tintMode = state.tint.mode;
+    setFieldDisabled("tint.grainAlpha", !(tintMode === "alpha" || tintMode === "stainHaze"));
+    setFieldDisabled("tint.color", !(tintMode === "stainMottle" || tintMode === "stainSpots" || tintMode === "stainHaze"));
+    setFieldDisabled("tint.alphaSlope", !(tintMode === "stainMottle" || tintMode === "stainSpots"));
+    setFieldDisabled("tint.alphaBias", !(tintMode === "stainMottle" || tintMode === "stainSpots"));
+    setFieldDisabled("tint.levels", tintMode !== "table");
   }
 
   function bindInputs(){
@@ -716,7 +749,7 @@
         else val = input.value;
         setPath(state, path, val);
         syncDisplay(input);
-        if (path === "noise.anisotropic") syncNoiseFrequencyYControl();
+        syncConditionalControls();
         refreshMetaPanel(); // Update changed parameters display
         render();
       });
