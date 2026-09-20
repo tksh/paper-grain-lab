@@ -72,6 +72,10 @@
       ja:"Disabled",
       en:"Disabled"
     },
+    resetSectionBtn: {
+      ja:"このセクションの変更をプリセットの値に戻す",
+      en:"Reset this section's changes back to the preset values"
+    },
     footerNote: {
       ja: `参考: [1] <a href="https://codepen.io/ol-ivier/pen/raWowqp" target="_blank" rel="noopener noreferrer">Paper Textures — Pure SVG &amp; CSS</a>（41種のfeTurbulence/feColorMatrix等を使った紙質感コレクション）／ [2] <a href="https://codepen.io/imhalid/pen/WbeEomq" target="_blank" rel="noopener noreferrer">Paper Texture Background</a>（feTurbulence→feDiffuseLighting→feDisplacementMapで「破れた縁」を作る手法）／ [3] <a href="https://codepen.io/mpldesign/pen/DexRwL" target="_blank" rel="noopener noreferrer">Simplified Rough Paper Texture</a>（feTurbulence→feDiffuseLightingのみの最小構成）。本ラボはこれら3手法を「ノイズ生成 → 織り目/繊維の重ね合わせ → 歪み → ライティング → 色付け → 合成」という単一のパイプラインに統合し、CSSを介さず純粋なSVGフィルターだけで表現しています。`,
       en: `References: [1] <a href="https://codepen.io/ol-ivier/pen/raWowqp" target="_blank" rel="noopener noreferrer">Paper Textures — Pure SVG &amp; CSS</a> (a collection of 41 paper textures built with feTurbulence, feColorMatrix, and more) / [2] <a href="https://codepen.io/imhalid/pen/WbeEomq" target="_blank" rel="noopener noreferrer">Paper Texture Background</a> (a "torn edges" technique via feTurbulence → feDiffuseLighting → feDisplacementMap) / [3] <a href="https://codepen.io/mpldesign/pen/DexRwL" target="_blank" rel="noopener noreferrer">Simplified Rough Paper Texture</a> (a minimal feTurbulence → feDiffuseLighting setup). This lab unifies all three techniques into a single pipeline — noise generation → weave/fiber layering → distortion → lighting → tinting → compositing — expressed entirely in pure SVG filters, with no CSS involved.`
@@ -527,6 +531,29 @@
     return parts.join('<span class="anno-sep">›</span>');
   }
 
+  /* ---------- per-section reset button ---------- */
+  const RESET_ICON_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<polyline points="23 4 23 10 17 10"></polyline>' +
+    '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>' +
+    '</svg>';
+
+  function resetSection(sectionKey){
+    state[sectionKey] = deepClone(initialState[sectionKey]);
+    setControlsFromState();
+    refreshMetaPanel();
+    render();
+  }
+
+  function updateSectionResetButtons(changes){
+    const changedSectionNumbers = new Set(
+      changes.map(c=>c.sectionNumber).filter(n=>n != null)
+    );
+    document.querySelectorAll("#paramsRail .sec-reset").forEach(btn=>{
+      btn.hidden = !changedSectionNumbers.has(Number(btn.dataset.sectionNumber));
+    });
+  }
+
   /* ---------- build param UI ---------- */
   const paramsRail = document.getElementById("paramsRail");
   let sectionOpenState = null;
@@ -565,6 +592,25 @@
       titleRow.appendChild(titleText);
       titleRow.appendChild(dots);
       summary.appendChild(titleRow);
+      // Reset button: only for the numbered sections 1-7 (the unnumbered
+      // Canvas section has no preset-backed title number).
+      const numMatch = section.title.ja.match(/^(\d+)\./);
+      if (numMatch){
+        const resetBtn = document.createElement("button");
+        resetBtn.type = "button";
+        resetBtn.className = "sec-reset";
+        resetBtn.dataset.sectionNumber = numMatch[1];
+        resetBtn.title = T(UI.resetSectionBtn);
+        resetBtn.setAttribute("aria-label", T(UI.resetSectionBtn));
+        resetBtn.innerHTML = RESET_ICON_SVG;
+        resetBtn.hidden = true;
+        resetBtn.addEventListener("click", (e)=>{
+          e.preventDefault(); // don't toggle the details open/closed
+          e.stopPropagation();
+          resetSection(section.key);
+        });
+        summary.appendChild(resetBtn);
+      }
       det.appendChild(summary);
       const body = document.createElement("div");
       body.className = "body";
@@ -855,6 +901,7 @@
     metaName.textContent = T(sel.item.label);
     
     const changes = getChangedParameters(state, initialState);
+    updateSectionResetButtons(changes); // keep reset icons in sync with the same change data
     if (changes.length === 0){
       metaBody.textContent = T(UI.metaBodyOriginal);
     } else {
