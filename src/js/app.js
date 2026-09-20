@@ -426,7 +426,7 @@
         { bind:"noise.seed", label:{ja:"シード",en:"Seed"}, type:"range", min:0, max:100, step:1, anno:{ chain:["feTurbulence"], attr:"seed" } }
       ]},
     { key:"weave",
-      title:{ ja:"2. 織り目ブレンド（交差タービュランス）", en:"2. Weave Blend (crossed turbulence)" },
+      title:{ ja:"2. 織り目ブレンド", en:"2. Weave Blend" },
       desc:{ ja:"直交する2つのノイズを重ねて布目・リネン調の方向性を作る（参考[1]の p-lin / p-canevas と同系統の手法）。feTurbulence と feBlend の2要素を使いますが、2本目の feTurbulence は「1. ノイズ生成」の周波数X/Yを入れ替えた値・同じオクターブ数を自動的に再利用する仕様のため（経糸と緯糸は同じ繊維が直交しているだけ、という構造を再現するため）、ここで独立操作できるのは feBlend の合成モードのみです。2本目のノイズ自体を調整したい場合は「1. ノイズ生成」で「X/Yの周波数を独立させる」をONにして周波数X/Yを変更してください。",
              en:`Overlays two perpendicular noise fields to create directional woven/linen-like texture (the same family of technique as Reference [1]'s p-lin / p-canevas). Uses two elements, feTurbulence and feBlend — but the second feTurbulence automatically reuses "1. Noise Generation"'s frequency with X and Y swapped, plus the same octave count (this reproduces the idea that warp and weft are the same fiber, just crossed at a right angle), so the only thing independently adjustable here is feBlend's blend mode. To adjust the second noise field itself, turn on "Make X/Y frequency independent" in "1. Noise Generation" and change the X/Y frequency there.` },
       fields:[
@@ -439,7 +439,7 @@
           ], anno:{ chain:["feBlend"], attr:"mode" } }
       ]},
     { key:"pulp",
-      title:{ ja:"3. パルプ繊維レイヤー（2層ノイズ＋ぼかし）", en:"3. Pulp Fiber Layer (two-layer noise + blur)" },
+      title:{ ja:"3. パルプ繊維レイヤー", en:"3. Pulp Fiber Layer" },
       desc:{ ja:"細かい紙粉ノイズに、ぼかした太い繊維ノイズを重ねる（米紙・麻紙向け、参考[1]の p-riz の考え方）。feTurbulence / feGaussianBlur / feColorMatrix / feBlend の4要素を使います。",
              en:"Layers a coarser, blurred fiber-noise field over fine paper-dust noise (for rice paper / hemp paper, following the idea behind Reference [1]'s p-riz). Uses four elements: feTurbulence / feGaussianBlur / feColorMatrix / feBlend." },
       fields:[
@@ -450,7 +450,7 @@
         { bind:"pulp.fiberAlpha", label:{ja:"繊維の濃さ",en:"Fiber density"}, type:"range", min:0, max:1, step:0.05, anno:{ chain:["feColorMatrix"], attr:"values" } }
       ]},
     { key:"distort",
-      title:{ ja:"4. 歪み／破れ表現", en:"4. Distortion / Tearing" },
+      title:{ ja:"4. 歪み", en:"4. Distortion" },
       desc:{ ja:"別のノイズでパターン自体を歪ませる（参考[2]の「torn edges」手法。樹皮紙やデコボコの縁の表現に）。feTurbulence と feDisplacementMap の2要素を使います。",
              en:`Warps the pattern itself using a separate noise field (Reference [2]'s "torn edges" technique — useful for bark paper or ragged, uneven edges). Uses two elements, feTurbulence and feDisplacementMap.` },
       fields:[
@@ -460,7 +460,7 @@
         { bind:"distort.scale", label:{ja:"歪み量",en:"Distortion amount"}, type:"range", min:0, max:80, step:1, anno:{ chain:["feDisplacementMap"], attr:"scale" } }
       ]},
     { key:"light",
-      title:{ ja:"5. ライティング（凹凸表現）", en:"5. Lighting (surface relief)" },
+      title:{ ja:"5. ライティング（凹凸表現）", en:"5. Lighting (Surface Relief)" },
       desc:{ ja:"ノイズを高さ情報として扱い、仮想光源で陰影をつける（参考[3]の roughpaper 手法そのもの）。feDiffuseLighting / feSpecularLighting とその子要素 feDistantLight を使います。",
              en:"Treats the noise as height data and shades it with a virtual light source (exactly Reference [3]'s rough-paper technique). Uses feDiffuseLighting / feSpecularLighting and their child element feDistantLight." },
       fields:[
@@ -476,7 +476,7 @@
         { bind:"light.color", label:{ja:"光の色",en:"Light color"}, type:"color", anno:{ chain:["feDiffuseLighting/feSpecularLighting"], attr:"lighting-color" } }
       ]},
     { key:"tint",
-      title:{ ja:"6. 色付け／シミ表現", en:"6. Tinting / Staining" },
+      title:{ ja:"6. 着色／シミ", en:"6. Tinting / Staining" },
       desc:{ ja:"陰影マップに色相を与えたり、しきい値で斑点・繊維の濃淡を作る。feColorMatrix と feComponentTransfer(+feFuncR/G/B) のいずれかを使います。",
              en:"Adds hue to the shading map, or uses a threshold to create spots and fiber-density variation. Uses either feColorMatrix or feComponentTransfer (+feFuncR/G/B)." },
       fields:[
