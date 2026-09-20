@@ -1,9 +1,8 @@
 (function(){
   "use strict";
-  const NS = "http://www.w3.org/2000/svg";
 
-  /* ---------- language state ---------- */
-  let lang = "ja";
+  /* ---------- language state (English is the default) ---------- */
+  let lang = "en";
   function T(pair){ return pair[lang]; }
 
   /* ---------- helpers ---------- */
@@ -779,7 +778,7 @@
     const paramMap = {};
     const sectionFieldMap = {}; // Map section keys to their fields
     
-    SECTIONS.forEach((section, index) => {
+    SECTIONS.forEach((section) => {
       sectionFieldMap[section.key] = section.fields;
       section.fields.forEach(field => {
         if (field.anno) {
@@ -1023,7 +1022,7 @@
     ta.select();
     ta.setSelectionRange(0, text.length);
     let ok = false;
-    try { ok = document.execCommand("copy"); } catch(e){ ok = false; }
+    try { ok = document.execCommand("copy"); } catch{ ok = false; }
     document.body.removeChild(ta);
     return ok;
   }
