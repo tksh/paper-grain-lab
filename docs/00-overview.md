@@ -12,18 +12,20 @@ compositing). It has two pages with a shared texture core:
 Both pages keep evolving in parallel. The pure page is the reference
 implementation of the texture pipeline; the composite page reuses it.
 
-## Phases
+## Phases (all shipped; the per-commit task list `docs/60-task-list.md` was
 
-- **Phase 1 (current):** finish the pure page as a standalone texture lab —
-  texture URL codec (`tex.*`, see `docs/10-texture-url-spec.md`), static SVG
-  code highlighting (`docs/40-highlighting-spec.md`), Deno-first workflow
+retired — git retains it)
+
+- **Phase 1 (shipped):** pure page as a standalone texture lab — shared texture
+  core module, `tex.*` URL codec with share-link UI
+  (`docs/10-texture-url-spec.md`), static SVG code highlighting
+  (`docs/40-highlighting-spec.md`), Deno-first workflow with `tests/`
   (`docs/50-deno-workflow.md`).
-- **Phase 2:** build `/stln/` — Straightlines integration
-  (`docs/30-integration-spec.md`) with composite controls
-  (`docs/20-composite-spec.md`), PNG export (lossless WebP / JPEG XL later).
-
-Commit-level implementation order for both phases lives in
-`docs/60-task-list.md`.
+- **Phase 2 (shipped):** `/stln/` Straightlines integration
+  (`docs/30-integration-spec.md`) — bundled entry, illustration decode and
+  rasterization, canvas composite with order/mode/opacity/ignoreBg
+  (`docs/20-composite-spec.md`), raster size controls, PNG export, combined
+  share links (lossless WebP / JPEG XL remain future work).
 
 ## Requirements that apply to everything
 
