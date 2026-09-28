@@ -2063,11 +2063,15 @@ function encodeCmpSettings(cmp2, raster2) {
   const params = new URLSearchParams();
   if (cmp2.order !== DEFAULT_CMP.order) params.set("cmp.order", cmp2.order);
   if (cmp2.mode !== DEFAULT_CMP.mode) params.set("cmp.mode", cmp2.mode);
-  if (cmp2.opacity !== DEFAULT_CMP.opacity) params.set("cmp.opacity", String(cmp2.opacity));
+  if (cmp2.opacity !== DEFAULT_CMP.opacity) {
+    params.set("cmp.opacity", String(cmp2.opacity));
+  }
   if (cmp2.ignoreBg) params.set("cmp.ignoreBg", "1");
   if (raster2.w !== DEFAULT_RASTER.w) params.set("cmp.w", String(raster2.w));
   if (raster2.h !== DEFAULT_RASTER.h) params.set("cmp.h", String(raster2.h));
-  if (raster2.dpr !== DEFAULT_RASTER.dpr) params.set("cmp.dpr", String(raster2.dpr));
+  if (raster2.dpr !== DEFAULT_RASTER.dpr) {
+    params.set("cmp.dpr", String(raster2.dpr));
+  }
   const ordered = new URLSearchParams();
   for (const key of CMP_KEY_ORDER) {
     const v = params.get(key);
@@ -2085,7 +2089,9 @@ function texQuery(query) {
 function buildShareQuery(current, cmpParams) {
   const out = new URLSearchParams();
   for (const [key, value] of current) {
-    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) out.append(key, value);
+    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) {
+      out.append(key, value);
+    }
   }
   for (const [key, value] of texQuery(current)) out.append(key, value);
   for (const [key, value] of cmpParams) out.append(key, value);
