@@ -10,6 +10,7 @@ import {
   noiseBaseFrequency,
   setPath,
 } from "./texture-core.js";
+import { decodeTextureToState, encodeTextureState } from "./tex-codec.js";
 
 (function(){
   "use strict";
@@ -34,6 +35,7 @@ import {
     copyBtn: { ja:"コピー", en:"Copy" },
     copySuccess: { ja:"コピーしました", en:"Copied" },
     copyFail: { ja:"コピーできませんでした", en:"Copy failed" },
+    linkBtn: { ja:"リンクをコピー", en:"Copy link" },
     loadBtn: { ja:"読み込む", en:"Load" },
     metaBodyOriginal: {
       ja:"パラメータは調整されていません",
@@ -886,6 +888,13 @@ import {
     return ok;
   }
 
+  function copyText(text){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(text).then(()=>true).catch(()=>fallbackCopy(text));
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+
   document.getElementById("copyBtn").addEventListener("click", ()=>{
     const text = codeOut.textContent;
     const btn = document.getElementById("copyBtn");
@@ -895,16 +904,38 @@ import {
       setTimeout(()=>{ btn.textContent = T(UI.copyBtn); }, 1400);
       void old;
     };
+    copyText(text).then((ok)=>{
+      flash(ok ? T(UI.copySuccess) : T(UI.copyFail));
+    });
+  });
 
-    if (navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(text).then(()=>{
-        flash(T(UI.copySuccess));
-      }).catch(()=>{
-        flash(fallbackCopy(text) ? T(UI.copySuccess) : T(UI.copyFail));
-      });
-    } else {
-      flash(fallbackCopy(text) ? T(UI.copySuccess) : T(UI.copyFail));
-    }
+  /* ---------- share link (tex.* round-trip; other namespaces ignored) ---------- */
+  function shareURL(){
+    const query = encodeTextureState(state).toString();
+    const base = `${location.origin}${location.pathname}`;
+    return query ? `${base}?${query}` : base;
+  }
+
+  function hasTextureParams(){
+    try {
+      for (const key of new URLSearchParams(location.search).keys()){
+        if (key.startsWith("tex.")) return true;
+      }
+    } catch { /* malformed query string: treat as no params */ }
+    return false;
+  }
+
+  document.getElementById("linkBtn").addEventListener("click", ()=>{
+    const btn = document.getElementById("linkBtn");
+    const flash = (label)=>{
+      const old = btn.textContent;
+      btn.textContent = label;
+      setTimeout(()=>{ btn.textContent = T(UI.linkBtn); }, 1400);
+      void old;
+    };
+    copyText(shareURL()).then((ok)=>{
+      flash(ok ? T(UI.copySuccess) : T(UI.copyFail));
+    });
   });
 
   /* ---------- language switch ---------- */
@@ -933,6 +964,12 @@ import {
   deepMerge(state, basePreset.state);
   deepMerge(state, firstOriginal.state);
   initialState = deepClone(state); // Set initial state after first load
+  if (hasTextureParams()){
+    // Shared texture link: restore sliders from tex.* params (bare stln and
+    // cmp.* keys are ignored on the pure page) and rebase the tracker on it.
+    state = decodeTextureToState(new URLSearchParams(location.search));
+    initialState = deepClone(state);
+  }
   currentSelection = { type:"original", item:firstOriginal };
   setControlsFromState();
   refreshMetaPanel();

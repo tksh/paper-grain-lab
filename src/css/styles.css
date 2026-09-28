@@ -281,6 +281,7 @@ details.section .desc{ font-size: .68rem; color: var(--ink-soft); line-height:1.
   font-size:.68rem; padding:5px 10px; border-radius:2px; cursor:pointer;
 }
 .code-head button:hover{ opacity:.9; }
+.code-actions{ display:flex; gap:8px; }
 pre.code{
   margin:0; padding: 14px; max-height: 420px; overflow:auto;
   background: var(--panel); color: var(--ink);
