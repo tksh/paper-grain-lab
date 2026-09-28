@@ -1,13 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Test Page</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title id="pageTitleTag">Paper Grain Lab — Straightlines Composite</title>
+<link rel="stylesheet" href="../css/styles.css">
 </head>
 <body>
 
-    <h1>Hello World</h1>
-    <p>The HTML file is working correctly as paper-grain-lab.pages.dev/stln</p>
+<header class="top">
+  <div class="head-row">
+    <div class="head-text">
+      <h1>Paper Grain Lab — Stln</h1>
+      <p><a id="backLink" href="../">← Pure texture lab</a></p>
+    </div>
+    <div class="lang-switch" role="group" aria-label="Language / 言語">
+      <button type="button" class="lang-btn" data-lang="en">
+        <span>English</span>
+      </button>
+      <button type="button" class="lang-btn" data-lang="ja">
+        <span>日本語</span>
+      </button>
+    </div>
+  </div>
+</header>
 
+<div class="workspace">
+  <div class="pane-preview">
+    <div class="card">
+      <h2 data-i18n-status-title>Status</h2>
+      <div id="stlnStatus"></div>
+      <div id="stlnError" class="stln-error" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n-preview-title>Composite preview</h2>
+      <p class="sub" data-i18n-preview-note></p>
+      <canvas id="stlnCanvas" hidden></canvas>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n-settings-title>Composite settings</h2>
+      <p class="sub" data-i18n-settings-note></p>
+      <div id="cmpControls"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n-share-title>Share</h2>
+      <p class="sub" data-i18n-share-note></p>
+      <div id="shareRow"></div>
+    </div>
+  </div>
+</div>
+
+<footer class="note" id="footerNote"></footer>
+
+<script type="module" src="./bundle.js"></script>
 </body>
 </html>

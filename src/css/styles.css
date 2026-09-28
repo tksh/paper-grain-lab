@@ -270,6 +270,21 @@ details.section .desc{ font-size: .68rem; color: var(--ink-soft); line-height:1.
   font-family:var(--mono); opacity:.7;
 }
 
+/* ---- composite lab (/stln/) ---- */
+.stln-error{
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #b3261e;
+  border-radius: 3px;
+  background: #fdecea;
+  color: #5f1410;
+  font-size: .72rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+#stlnStatus p{ margin: 0 0 6px; font-size: .74rem; line-height: 1.6; }
+#stlnCanvas{ max-width: 100%; border: 1px solid var(--line); }
+
 .code-card{ background: var(--panel); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
 .code-head{
   display:flex; justify-content:space-between; align-items:center;

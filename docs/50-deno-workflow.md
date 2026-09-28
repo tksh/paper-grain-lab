@@ -8,38 +8,37 @@ Product behavior lives in the other `docs/` files, not here.
 ```jsonc
 {
   "imports": {
+    "@std/assert": "jsr:@std/assert@1",
     "@tksh/stln-codec": "jsr:@tksh/stln-codec@0.1.3"
   },
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext", "deno.ns"]
+  },
   "tasks": {
-    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js",
+    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js src/stln/main.ts",
     "lint": "deno lint",
-    "fmt": "deno fmt"
+    "fmt": "deno fmt",
+    "test": "deno test --allow-read tests/",
+    "bundle:stln": "deno bundle --platform=browser --format=esm -o src/stln/bundle.js src/stln/main.ts"
   },
   "fmt": {
     "exclude": [
       "src/js/app.js",
       "src/css/styles.css",
       "src/index.html",
-      "src/stln/index.html"
+      "src/stln/index.html",
+      "src/stln/bundle.js"
     ]
   },
   "lint": {
-    "exclude": ["src/js/app.js"]
+    "exclude": ["src/stln/bundle.js"]
   }
 }
 ```
 
-Phase 2 additions (when `src/stln/main.ts` and `tests/` land):
-
-```jsonc
-{
-  "tasks": {
-    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js src/stln/main.ts",
-    "bundle:stln": "deno bundle --platform=browser --format=esm --outfile=src/stln/bundle.js src/stln/main.ts",
-    "test": "deno test --allow-read tests/"
-  }
-}
-```
+When adding entries, extend the `check` task and (for `/stln/` browser code) the
+bundle input. Generated `src/stln/bundle.js` is committed so the page works with
+zero deploy configuration; it is fmt/lint-excluded.
 
 Notes:
 
@@ -48,8 +47,8 @@ Notes:
 - `src/js/app.js` (legacy IIFE) is excluded from `fmt` to avoid a whole-file
   reformat diff. `lint` covers the whole repo. All NEW code MUST be `fmt` AND
   `lint` clean — CI runs the tasks as defined here.
-- `deno check` covers the legacy script (syntax-level for plain JS) and, in
-  Phase 2, the typed `src/stln/main.ts` entry.
+- `deno check` covers the legacy script (syntax-level for plain JS) and the
+  typed `src/stln/main.ts` entry (full type-check with DOM lib).
 
 ## 2. Bundling (Phase 2, `/stln/` only)
 
@@ -62,12 +61,15 @@ deno task bundle:stln
 ```
 
 i.e.
-`deno bundle --platform=browser --format=esm --outfile=src/stln/bundle.js src/stln/main.ts`,
-loaded by `src/stln/index.html` as a plain script. Verify `deno bundle --help`
-if flags drift between Deno releases.
+`deno bundle --platform=browser --format=esm -o src/stln/bundle.js src/stln/main.ts`,
+loaded by `src/stln/index.html` as a module script. `deno bundle` is
+experimental: re-check `deno bundle --help` when upgrading Deno (the output flag
+is `-o`, not `--outfile`).
 
-- Bundle output disposition (checked in vs. gitignored build artifact) is
-  decided when `main.ts` lands; until then no bundle step runs in CI.
+- `src/stln/bundle.js` is committed (works with zero deploy configuration) and
+  fmt/lint-excluded as a generated artifact. Rebuild it with
+  `deno task bundle:stln` whenever `src/stln/main.ts` or its imports change, and
+  commit the result in the same commit.
 
 ## 3. Publish mapping
 
