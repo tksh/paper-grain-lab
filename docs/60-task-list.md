@@ -10,49 +10,49 @@ for the composite page, `test: …` only when a commit adds tests alone,
 
 ## Milestone A — shared core + `tex.*` codec (pure page)
 
-- [ ] **A0 —
+- [x] **A0 —
       `refactor(core): extract shared texture core as importable module(s)`.**
       Move `DEFAULTS`, generator math (`fmt`, `noiseBaseFrequency`,
       `hexToRgb01`, `generateSVG`), `ELEMENT_COLORS`, and the `tex.*` defaults
       table out of the `src/js/app.js` IIFE into modules importable by both `/`
       and `/stln/` and by Deno tests. No behavior change; pure page works
       identically (`docs/00-overview.md`, `docs/50-deno-workflow.md`).
-- [ ] **A1 — `feat(tex): add tex key table with defaults and value codecs`.**
+- [x] **A1 — `feat(tex): add tex key table with defaults and value codecs`.**
       Data only: every key in `docs/10-texture-url-spec.md` §4 with its default,
       plus formatters (comma-joined multi-values, `#`-stripped hex, `=1` flags)
       and parsers with fallback. No UI wiring.
-- [ ] **A2 — `feat(tex): implement encode (slider state → params)`.** Compute
+- [x] **A2 — `feat(tex): implement encode (slider state → params)`.** Compute
       literals with the same math as the SVG generator (matrix assembly per tint
       family → `tex.cm1.values`; pulp alpha → `tex.cm2.values`; `x,y` join; hex
       strip); omit default-valued keys (`docs/10` §4–§5). Acceptance: golden
       encodings for the §7 examples.
-- [ ] **A3 — `feat(tex): implement decode-render (params → SVG)`.** Fixed 8-slot
+- [x] **A3 — `feat(tex): implement decode-render (params → SVG)`.** Fixed 8-slot
       template in slot order, branching only on flag/selector presence
       (`docs/10` §6, render mode). Acceptance: decode-render output is
       byte-identical to the generator for the §7 examples.
-- [ ] **A4 — `feat(tex): implement decode-restore (params → slider state)`.**
+- [x] **A4 — `feat(tex): implement decode-restore (params → slider state)`.**
       Best-effort slider recovery incl. `tex.tint` family inference from
       `cm1.values` shape (`docs/10` §6); unrecoverable values fall back to
       defaults and the restored state becomes the change-tracker baseline.
       Acceptance: inference matrix test + omission round-trip property (omitted
       key ≡ explicit default).
-- [ ] **A5 — `feat(ui): wire share-link UI on the pure page`.** Copy-link button
+- [x] **A5 — `feat(ui): wire share-link UI on the pure page`.** Copy-link button
       (+ optional address-bar sync); on load, parse query, restore sliders via
       A4, ignore bare `stln`/`cmp.*` keys (`docs/30-integration-spec.md` §2).
       Acceptance: paste-share-URL restores the exact texture; unknown keys never
       break the page.
-- [ ] **A6 — `chore(tests): add tests/ harness and codec round-trip suite`.**
+- [x] **A6 — `chore(tests): add tests/ harness and codec round-trip suite`.**
       `tests/` dir + `deno task test` wiring (`docs/50` §4: extend `deno.jsonc`
       tasks). Covers A1–A4 goldens, omission equivalence, and the namespace
       reservation rule (no unprefixed keys added).
 
 ## Milestone B — code-pane highlighting (pure page, independent of A)
 
-- [ ] **B1 — `feat(ui): static token highlighting in the SVG source pane`.**
+- [x] **B1 — `feat(ui): static token highlighting in the SVG source pane`.**
       Line-based tokenizer: escape `&<>"`, wrap leading element names in spans
       with `ELEMENT_COLORS` backgrounds (`docs/40-highlighting-spec.md` §1–§2).
       Bright pane styling only; no hover linkage.
-- [ ] **B2 — `test(ui): copy-invariant and theme audit for the code pane`.**
+- [x] **B2 — `test(ui): copy-invariant and theme audit for the code pane`.**
       Assert `pane.textContent === generatorOutput` across presets and that no
       dark styles survive (including forced OS dark mode) (`docs/40` §3–§4).
 
