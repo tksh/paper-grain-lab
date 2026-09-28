@@ -15,7 +15,7 @@ Product behavior lives in the other `docs/` files, not here.
     "lib": ["dom", "dom.iterable", "esnext", "deno.ns"]
   },
   "tasks": {
-    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js src/stln/main.ts",
+    "check": "deno check src/js/app.js src/stln/main.ts",
     "lint": "deno lint",
     "fmt": "deno fmt",
     "test": "deno test --allow-read tests/",
@@ -36,9 +36,9 @@ Product behavior lives in the other `docs/` files, not here.
 }
 ```
 
-When adding entries, extend the `check` task and (for `/stln/` browser code) the
-bundle input. Generated `src/stln/bundle.js` is committed so the page works with
-zero deploy configuration; it is fmt/lint-excluded.
+When adding entries, extend the `check` task. Library modules need no listing:
+entry points pull them in transitively (`app.js` covers `src/js/*`, `main.ts`
+covers `src/stln/*`).
 
 Notes:
 

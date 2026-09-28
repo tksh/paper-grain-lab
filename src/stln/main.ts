@@ -8,6 +8,12 @@
  */
 import { decodeTextureToState } from "../js/tex-codec.js";
 import { deepClone, generateSVG } from "../js/texture-core.js";
+import {
+  coverDest,
+  decodeIllustration,
+  PREVIEW_SIZE,
+  withExplicitSize,
+} from "./composite.ts";
 
 type Lang = "en" | "ja";
 type Text = Record<Lang, string>;
@@ -26,8 +32,8 @@ const UI: Record<string, Text> = {
   statusTitle: { en: "Status", ja: "状態" },
   previewTitle: { en: "Composite preview", ja: "合成プレビュー" },
   previewNote: {
-    en: "Canvas compositing arrives in C2. Texture status already works.",
-    ja: "キャンバス合成は C2 で対応します。テクスチャの状態表示は動作します。",
+    en: "Illustration preview. Texture compositing arrives in C3.",
+    ja: "イラストのプレビュー。テクスチャ合成は C3 で対応します。",
   },
   settingsTitle: { en: "Composite settings", ja: "合成設定" },
   settingsNote: {
@@ -124,10 +130,85 @@ function renderStatus(query: URLSearchParams): void {
   box.appendChild(texture);
 }
 
+/* ---------- illustration rasterization (C2) ---------- */
+
+let paintGen = 0;
+
+function showError(message: Text): void {
+  const box = document.getElementById("stlnError");
+  if (!box) return;
+  box.textContent = T(message);
+  box.hidden = false;
+}
+
+function hideError(): void {
+  const box = document.getElementById("stlnError");
+  if (!box) return;
+  box.textContent = "";
+  box.hidden = true;
+}
+
+function loadImage(svg: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("illustration failed to rasterize"));
+    };
+    img.src = url;
+  });
+}
+
+const RASTERIZE_FAILED: Text = {
+  en:
+    "Could not render the illustration (invalid parameters or rasterization failure).",
+  ja:
+    "イラストを描画できませんでした（パラメータ不正またはラスタライズ失敗）。",
+};
+
+async function paintIllustration(query: URLSearchParams): Promise<void> {
+  const canvas = document.getElementById("stlnCanvas") as
+    | HTMLCanvasElement
+    | null;
+  if (!canvas) return;
+  const gen = ++paintGen;
+  hideError();
+  if (!stlnParamsPresent(query)) {
+    canvas.hidden = true;
+    return;
+  }
+  try {
+    const art = await decodeIllustration(query);
+    if (gen !== paintGen) return; // stale generation
+    const img = await loadImage(
+      withExplicitSize(art.svg, PREVIEW_SIZE, PREVIEW_SIZE),
+    );
+    if (gen !== paintGen) return; // stale generation
+    canvas.width = PREVIEW_SIZE;
+    canvas.height = PREVIEW_SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("2d context unavailable");
+    ctx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+    const { dx, dy, dw, dh } = coverDest(art.width, art.height, PREVIEW_SIZE);
+    ctx.drawImage(img, dx, dy, dw, dh);
+    canvas.hidden = false;
+  } catch {
+    if (gen !== paintGen) return;
+    canvas.hidden = true;
+    showError(RASTERIZE_FAILED);
+  }
+}
+
 function init(): void {
   applyI18n();
   const query = new URLSearchParams(location.search);
   renderStatus(query);
+  paintIllustration(query);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const next = (btn as HTMLElement).dataset.lang;
