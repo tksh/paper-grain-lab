@@ -284,6 +284,18 @@ details.section .desc{ font-size: .68rem; color: var(--ink-soft); line-height:1.
 }
 #stlnStatus p{ margin: 0 0 6px; font-size: .74rem; line-height: 1.6; }
 #stlnCanvas{ max-width: 100%; border: 1px solid var(--line); }
+#rasterControls{ margin-top: 12px; }
+.stln-actions{ margin-top: 12px; display:flex; gap:8px; }
+.stln-actions button{
+  background: var(--accent); border:none; color:#fff; font-family: var(--mono);
+  font-size:.68rem; padding:5px 10px; border-radius:2px; cursor:pointer;
+}
+.stln-actions button:hover{ opacity:.9; }
+.field input[type=number]{
+  width:100%; font-family: var(--mono); font-size:.72rem;
+  border:1px solid var(--line); background:#fff; color: var(--ink);
+  padding: 5px; border-radius:2px;
+}
 
 .code-card{ background: var(--panel); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
 .code-head{

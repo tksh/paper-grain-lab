@@ -13,9 +13,6 @@ import {
 
 export const STLN_PATH_MODE = "relativeMerged" as const;
 
-/** Preview bitmap used before C4 makes raster size configurable. */
-export const PREVIEW_SIZE = 1024;
-
 export interface Illustration {
   svg: string;
   viewBox: string;
@@ -67,10 +64,20 @@ export function coverDest(
   srcH: number,
   bitmap: number,
 ): { dx: number; dy: number; dw: number; dh: number } {
-  const scale = Math.max(bitmap / srcW, bitmap / srcH);
+  return coverRect(srcW, srcH, bitmap, bitmap);
+}
+
+/** Cover-fit destination rect into a (possibly non-square) bitmap. */
+export function coverRect(
+  srcW: number,
+  srcH: number,
+  bw: number,
+  bh: number,
+): { dx: number; dy: number; dw: number; dh: number } {
+  const scale = Math.max(bw / srcW, bh / srcH);
   const dw = srcW * scale;
   const dh = srcH * scale;
-  return { dx: (bitmap - dw) / 2, dy: (bitmap - dh) / 2, dw, dh };
+  return { dx: (bw - dw) / 2, dy: (bh - dh) / 2, dw, dh };
 }
 
 /* ---------- composite settings (docs/20 section 2) ---------- */
@@ -172,25 +179,60 @@ export interface LayerImage {
   height: number;
 }
 
-/** Draw bottom (source-over, opaque) then top (blend + alpha) into a square
- * bitmap. Resets composite state afterwards. Cover-fits each layer by its
- * own aspect. Testable with a stub 2D context. */
+/** Draw bottom (source-over, opaque) then top (blend + alpha). Resets
+ * composite state afterwards. Cover-fits each layer by its own aspect into
+ * the (possibly non-square) bitmap. Testable with a stub 2D context. */
 export function paintLayers(
   ctx: CanvasRenderingContext2D,
   bottom: LayerImage,
   top: LayerImage,
   cmp: CompositeSettings,
-  bitmap: number,
+  bw: number,
+  bh: number,
 ): void {
-  ctx.clearRect(0, 0, bitmap, bitmap);
+  ctx.clearRect(0, 0, bw, bh);
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
-  const b = coverDest(bottom.width, bottom.height, bitmap);
+  const b = coverRect(bottom.width, bottom.height, bw, bh);
   ctx.drawImage(bottom.img, b.dx, b.dy, b.dw, b.dh);
   ctx.globalCompositeOperation = cmp.mode;
   ctx.globalAlpha = cmp.opacity;
-  const t = coverDest(top.width, top.height, bitmap);
+  const t = coverRect(top.width, top.height, bw, bh);
   ctx.drawImage(top.img, t.dx, t.dy, t.dw, t.dh);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
+}
+
+/* ---------- raster settings (docs/20 sections 3-4) ---------- */
+
+export interface RasterSettings {
+  w: number;
+  h: number;
+  dpr: number;
+}
+
+export const DEFAULT_RASTER: RasterSettings = { w: 1024, h: 1024, dpr: 2 };
+
+/** Lenient parse: positive integers for w/h, 1-4 clamped dpr. */
+export function parseRasterSettings(query: URLSearchParams): RasterSettings {
+  const dim = (key: "cmp.w" | "cmp.h", fallback: number): number => {
+    const raw = query.get(key);
+    if (raw === null || raw.trim() === "") return fallback;
+    const n = Number(raw);
+    return Number.isInteger(n) && n > 0 ? n : fallback;
+  };
+  const dprRaw = query.get("cmp.dpr");
+  const dprNum = dprRaw === null || dprRaw.trim() === "" ? NaN : Number(dprRaw);
+  return {
+    w: dim("cmp.w", DEFAULT_RASTER.w),
+    h: dim("cmp.h", DEFAULT_RASTER.h),
+    dpr: Number.isFinite(dprNum)
+      ? Math.min(4, Math.max(1, dprNum))
+      : DEFAULT_RASTER.dpr,
+  };
+}
+
+/** Output bitmap in device pixels (also the PNG export size). */
+export function bitmapSize(r: RasterSettings): { bw: number; bh: number } {
+  return { bw: Math.round(r.w * r.dpr), bh: Math.round(r.h * r.dpr) };
 }

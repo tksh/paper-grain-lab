@@ -13,14 +13,17 @@ import {
 } from "../js/tex-codec.js";
 import { deepClone, DEFAULTS, generateSVG } from "../js/texture-core.js";
 import {
+  bitmapSize,
   CMP_BLENDS,
   CMP_ORDERS,
   type CompositeSettings,
   decodeIllustration,
   DEFAULT_CMP,
+  DEFAULT_RASTER,
   paintLayers,
   parseCmpSettings,
-  PREVIEW_SIZE,
+  parseRasterSettings,
+  type RasterSettings,
   withExplicitSize,
 } from "./composite.ts";
 
@@ -61,6 +64,14 @@ const UI: Record<string, Text> = {
   ignoreBgLabel: {
     en: "Ignore illustration background (layer 0)",
     ja: "イラストの背景を無視する（layer 0）",
+  },
+  rasterWLabel: { en: "Output width (px)", ja: "出力幅（px）" },
+  rasterHLabel: { en: "Output height (px)", ja: "出力高さ（px）" },
+  rasterDprLabel: { en: "Pixel ratio", ja: "ピクセル比" },
+  exportBtn: { en: "Download PNG", ja: "PNGをダウンロード" },
+  exportFailed: {
+    en: "PNG export failed.",
+    ja: "PNG の書き出しに失敗しました。",
   },
   shareTitle: { en: "Share", ja: "共有" },
   shareNote: {
@@ -128,6 +139,8 @@ function applyI18n(): void {
   set("[data-i18n-share-note]", T(UI.shareNote));
   const back = document.getElementById("backLink");
   if (back) back.textContent = T(UI.backLink);
+  const exportBtn = document.getElementById("exportBtn");
+  if (exportBtn) exportBtn.textContent = T(UI.exportBtn);
   const footer = document.getElementById("footerNote");
   if (footer) footer.textContent = T(UI.footerNote);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
@@ -156,6 +169,7 @@ function renderStatus(query: URLSearchParams): void {
 
 let paintGen = 0;
 let cmp: CompositeSettings = { ...DEFAULT_CMP };
+let raster: RasterSettings = { ...DEFAULT_RASTER };
 
 function showError(message: Text): void {
   const box = document.getElementById("stlnError");
@@ -200,6 +214,7 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
   if (!canvas) return;
   const gen = ++paintGen;
   const settings = { ...cmp };
+  const rasterSnapshot = { ...raster };
   hideError();
   if (!stlnParamsPresent(query)) {
     canvas.hidden = true;
@@ -211,13 +226,14 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
       Promise.resolve(decodeTextureToSvg(query)),
     ]);
     if (gen !== paintGen) return; // stale generation
+    const { bw, bh } = bitmapSize(rasterSnapshot);
     const [artImg, texImg] = await Promise.all([
-      loadImage(withExplicitSize(art.svg, PREVIEW_SIZE, PREVIEW_SIZE)),
-      loadImage(withExplicitSize(texSvg, PREVIEW_SIZE, PREVIEW_SIZE)),
+      loadImage(withExplicitSize(art.svg, bw, bh)),
+      loadImage(withExplicitSize(texSvg, bw, bh)),
     ]);
     if (gen !== paintGen) return; // stale generation
-    canvas.width = PREVIEW_SIZE;
-    canvas.height = PREVIEW_SIZE;
+    canvas.width = bw;
+    canvas.height = bh;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2d context unavailable");
     const artLayer = { img: artImg, width: art.width, height: art.height };
@@ -225,9 +241,9 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
     const texSize = textureBitmapSize(query);
     const texLayer = { img: texImg, width: texSize, height: texSize };
     if (settings.order === "tex-over-art") {
-      paintLayers(ctx, artLayer, texLayer, settings, PREVIEW_SIZE);
+      paintLayers(ctx, artLayer, texLayer, settings, bw, bh);
     } else {
-      paintLayers(ctx, texLayer, artLayer, settings, PREVIEW_SIZE);
+      paintLayers(ctx, texLayer, artLayer, settings, bw, bh);
     }
     canvas.hidden = false;
   } catch {
@@ -341,13 +357,80 @@ function buildCmpControls(): void {
   box.appendChild(bgWrap);
 }
 
+/* ---------- raster controls and PNG export (C4) ---------- */
+
+function rasterNumberRow(
+  box: HTMLElement,
+  label: string,
+  key: "w" | "h" | "dpr",
+  min: string,
+  max: string,
+  step: string,
+): void {
+  const row = labeledRow(`${label} (${raster[key]})`);
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = min;
+  input.max = max;
+  input.step = step;
+  input.value = String(raster[key]);
+  input.addEventListener("change", () => {
+    const parsed = parseRasterSettings(
+      new URLSearchParams(
+        `${
+          key === "w" ? "cmp.w" : key === "h" ? "cmp.h" : "cmp.dpr"
+        }=${input.value}`,
+      ),
+    );
+    raster[key] = parsed[key];
+    input.value = String(raster[key]);
+    row.labelEl.textContent = `${label} (${raster[key]})`;
+    repaint();
+  });
+  row.wrap.appendChild(input);
+  box.appendChild(row.wrap);
+}
+
+function buildRasterControls(): void {
+  const box = document.getElementById("rasterControls");
+  if (!box) return;
+  box.innerHTML = "";
+  rasterNumberRow(box, T(UI.rasterWLabel), "w", "64", "4096", "64");
+  rasterNumberRow(box, T(UI.rasterHLabel), "h", "64", "4096", "64");
+  rasterNumberRow(box, T(UI.rasterDprLabel), "dpr", "1", "4", "0.5");
+}
+
+function exportPNG(): void {
+  const canvas = document.getElementById("stlnCanvas") as
+    | HTMLCanvasElement
+    | null;
+  if (!canvas || canvas.hidden) return;
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      showError(UI.exportFailed);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "paper-grain-composite.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, "image/png");
+}
+
 function init(): void {
   applyI18n();
   const query = new URLSearchParams(location.search);
   cmp = parseCmpSettings(query);
+  raster = parseRasterSettings(query);
   renderStatus(query);
   buildCmpControls();
+  buildRasterControls();
   paintComposite(query);
+  document.getElementById("exportBtn")?.addEventListener("click", exportPNG);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const next = (btn as HTMLElement).dataset.lang;
@@ -356,6 +439,7 @@ function init(): void {
         applyI18n();
         renderStatus(new URLSearchParams(location.search));
         buildCmpControls();
+        buildRasterControls();
       }
     });
   });

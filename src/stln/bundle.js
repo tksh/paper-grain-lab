@@ -1915,11 +1915,12 @@ async function decodeUrlParams(search) {
 
 // src/stln/composite.ts
 var STLN_PATH_MODE = "relativeMerged";
-var PREVIEW_SIZE = 1024;
 function stlnQuery(query) {
   const out = new URLSearchParams();
   for (const [key, value] of query) {
-    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) out.append(key, value);
+    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) {
+      out.append(key, value);
+    }
   }
   return out;
 }
@@ -1935,13 +1936,13 @@ function withExplicitSize(svg, w, h) {
   const tag = open[0].replace(/\s+\bwidth="[^"]*"/, "").replace(/\s+\bheight="[^"]*"/, "").replace(/<svg\b/, `<svg width="${w}" height="${h}"`);
   return svg.slice(0, open.index) + tag + svg.slice(open.index + open[0].length);
 }
-function coverDest(srcW, srcH, bitmap) {
-  const scale = Math.max(bitmap / srcW, bitmap / srcH);
+function coverRect(srcW, srcH, bw, bh) {
+  const scale = Math.max(bw / srcW, bh / srcH);
   const dw = srcW * scale;
   const dh = srcH * scale;
   return {
-    dx: (bitmap - dw) / 2,
-    dy: (bitmap - dh) / 2,
+    dx: (bw - dw) / 2,
+    dy: (bh - dh) / 2,
     dw,
     dh
   };
@@ -2010,18 +2011,44 @@ function illustrationSvg(data, opts) {
     height: data.sizeData.height
   };
 }
-function paintLayers(ctx, bottom, top, cmp2, bitmap) {
-  ctx.clearRect(0, 0, bitmap, bitmap);
+function paintLayers(ctx, bottom, top, cmp2, bw, bh) {
+  ctx.clearRect(0, 0, bw, bh);
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
-  const b = coverDest(bottom.width, bottom.height, bitmap);
+  const b = coverRect(bottom.width, bottom.height, bw, bh);
   ctx.drawImage(bottom.img, b.dx, b.dy, b.dw, b.dh);
   ctx.globalCompositeOperation = cmp2.mode;
   ctx.globalAlpha = cmp2.opacity;
-  const t = coverDest(top.width, top.height, bitmap);
+  const t = coverRect(top.width, top.height, bw, bh);
   ctx.drawImage(top.img, t.dx, t.dy, t.dw, t.dh);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
+}
+var DEFAULT_RASTER = {
+  w: 1024,
+  h: 1024,
+  dpr: 2
+};
+function parseRasterSettings(query) {
+  const dim = (key, fallback) => {
+    const raw = query.get(key);
+    if (raw === null || raw.trim() === "") return fallback;
+    const n = Number(raw);
+    return Number.isInteger(n) && n > 0 ? n : fallback;
+  };
+  const dprRaw = query.get("cmp.dpr");
+  const dprNum = dprRaw === null || dprRaw.trim() === "" ? NaN : Number(dprRaw);
+  return {
+    w: dim("cmp.w", DEFAULT_RASTER.w),
+    h: dim("cmp.h", DEFAULT_RASTER.h),
+    dpr: Number.isFinite(dprNum) ? Math.min(4, Math.max(1, dprNum)) : DEFAULT_RASTER.dpr
+  };
+}
+function bitmapSize(r) {
+  return {
+    bw: Math.round(r.w * r.dpr),
+    bh: Math.round(r.h * r.dpr)
+  };
 }
 
 // src/stln/main.ts
@@ -2078,6 +2105,26 @@ var UI = {
   ignoreBgLabel: {
     en: "Ignore illustration background (layer 0)",
     ja: "\u30A4\u30E9\u30B9\u30C8\u306E\u80CC\u666F\u3092\u7121\u8996\u3059\u308B\uFF08layer 0\uFF09"
+  },
+  rasterWLabel: {
+    en: "Output width (px)",
+    ja: "\u51FA\u529B\u5E45\uFF08px\uFF09"
+  },
+  rasterHLabel: {
+    en: "Output height (px)",
+    ja: "\u51FA\u529B\u9AD8\u3055\uFF08px\uFF09"
+  },
+  rasterDprLabel: {
+    en: "Pixel ratio",
+    ja: "\u30D4\u30AF\u30BB\u30EB\u6BD4"
+  },
+  exportBtn: {
+    en: "Download PNG",
+    ja: "PNG\u3092\u30C0\u30A6\u30F3\u30ED\u30FC\u30C9"
+  },
+  exportFailed: {
+    en: "PNG export failed.",
+    ja: "PNG \u306E\u66F8\u304D\u51FA\u3057\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002"
   },
   shareTitle: {
     en: "Share",
@@ -2137,6 +2184,8 @@ function applyI18n() {
   set("[data-i18n-share-note]", T(UI.shareNote));
   const back = document.getElementById("backLink");
   if (back) back.textContent = T(UI.backLink);
+  const exportBtn = document.getElementById("exportBtn");
+  if (exportBtn) exportBtn.textContent = T(UI.exportBtn);
   const footer = document.getElementById("footerNote");
   if (footer) footer.textContent = T(UI.footerNote);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
@@ -2157,6 +2206,9 @@ function renderStatus(query) {
 var paintGen = 0;
 var cmp = {
   ...DEFAULT_CMP
+};
+var raster = {
+  ...DEFAULT_RASTER
 };
 function showError(message) {
   const box = document.getElementById("stlnError");
@@ -2200,6 +2252,9 @@ async function paintComposite(query) {
   const settings = {
     ...cmp
   };
+  const rasterSnapshot = {
+    ...raster
+  };
   hideError();
   if (!stlnParamsPresent(query)) {
     canvas.hidden = true;
@@ -2213,13 +2268,14 @@ async function paintComposite(query) {
       Promise.resolve(decodeTextureToSvg(query))
     ]);
     if (gen !== paintGen) return;
+    const { bw, bh } = bitmapSize(rasterSnapshot);
     const [artImg, texImg] = await Promise.all([
-      loadImage(withExplicitSize(art.svg, PREVIEW_SIZE, PREVIEW_SIZE)),
-      loadImage(withExplicitSize(texSvg, PREVIEW_SIZE, PREVIEW_SIZE))
+      loadImage(withExplicitSize(art.svg, bw, bh)),
+      loadImage(withExplicitSize(texSvg, bw, bh))
     ]);
     if (gen !== paintGen) return;
-    canvas.width = PREVIEW_SIZE;
-    canvas.height = PREVIEW_SIZE;
+    canvas.width = bw;
+    canvas.height = bh;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2d context unavailable");
     const artLayer = {
@@ -2234,9 +2290,9 @@ async function paintComposite(query) {
       height: texSize
     };
     if (settings.order === "tex-over-art") {
-      paintLayers(ctx, artLayer, texLayer, settings, PREVIEW_SIZE);
+      paintLayers(ctx, artLayer, texLayer, settings, bw, bh);
     } else {
-      paintLayers(ctx, texLayer, artLayer, settings, PREVIEW_SIZE);
+      paintLayers(ctx, texLayer, artLayer, settings, bw, bh);
     }
     canvas.hidden = false;
   } catch {
@@ -2327,13 +2383,60 @@ function buildCmpControls() {
   bgWrap.appendChild(bgLabel);
   box.appendChild(bgWrap);
 }
+function rasterNumberRow(box, label, key, min, max, step) {
+  const row = labeledRow(`${label} (${raster[key]})`);
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = min;
+  input.max = max;
+  input.step = step;
+  input.value = String(raster[key]);
+  input.addEventListener("change", () => {
+    const parsed = parseRasterSettings(new URLSearchParams(`${key === "w" ? "cmp.w" : key === "h" ? "cmp.h" : "cmp.dpr"}=${input.value}`));
+    raster[key] = parsed[key];
+    input.value = String(raster[key]);
+    row.labelEl.textContent = `${label} (${raster[key]})`;
+    repaint();
+  });
+  row.wrap.appendChild(input);
+  box.appendChild(row.wrap);
+}
+function buildRasterControls() {
+  const box = document.getElementById("rasterControls");
+  if (!box) return;
+  box.innerHTML = "";
+  rasterNumberRow(box, T(UI.rasterWLabel), "w", "64", "4096", "64");
+  rasterNumberRow(box, T(UI.rasterHLabel), "h", "64", "4096", "64");
+  rasterNumberRow(box, T(UI.rasterDprLabel), "dpr", "1", "4", "0.5");
+}
+function exportPNG() {
+  const canvas = document.getElementById("stlnCanvas");
+  if (!canvas || canvas.hidden) return;
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      showError(UI.exportFailed);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "paper-grain-composite.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  }, "image/png");
+}
 function init() {
   applyI18n();
   const query = new URLSearchParams(location.search);
   cmp = parseCmpSettings(query);
+  raster = parseRasterSettings(query);
   renderStatus(query);
   buildCmpControls();
+  buildRasterControls();
   paintComposite(query);
+  document.getElementById("exportBtn")?.addEventListener("click", exportPNG);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const next = btn.dataset.lang;
@@ -2342,6 +2445,7 @@ function init() {
         applyI18n();
         renderStatus(new URLSearchParams(location.search));
         buildCmpControls();
+        buildRasterControls();
       }
     });
   });
