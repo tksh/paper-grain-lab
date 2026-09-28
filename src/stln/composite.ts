@@ -236,3 +236,68 @@ export function parseRasterSettings(query: URLSearchParams): RasterSettings {
 export function bitmapSize(r: RasterSettings): { bw: number; bh: number } {
   return { bw: Math.round(r.w * r.dpr), bh: Math.round(r.h * r.dpr) };
 }
+
+/* ---------- share links (docs/30 section 5) ---------- */
+
+const CMP_KEY_ORDER = [
+  "cmp.order",
+  "cmp.mode",
+  "cmp.opacity",
+  "cmp.ignoreBg",
+  "cmp.w",
+  "cmp.h",
+  "cmp.dpr",
+] as const;
+
+/** Encode composite+raster settings, omitting defaults (canonical order). */
+export function encodeCmpSettings(
+  cmp: CompositeSettings,
+  raster: RasterSettings,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (cmp.order !== DEFAULT_CMP.order) params.set("cmp.order", cmp.order);
+  if (cmp.mode !== DEFAULT_CMP.mode) params.set("cmp.mode", cmp.mode);
+  if (cmp.opacity !== DEFAULT_CMP.opacity) {
+    params.set("cmp.opacity", String(cmp.opacity));
+  }
+  if (cmp.ignoreBg) params.set("cmp.ignoreBg", "1");
+  if (raster.w !== DEFAULT_RASTER.w) params.set("cmp.w", String(raster.w));
+  if (raster.h !== DEFAULT_RASTER.h) params.set("cmp.h", String(raster.h));
+  if (raster.dpr !== DEFAULT_RASTER.dpr) {
+    params.set("cmp.dpr", String(raster.dpr));
+  }
+  const ordered = new URLSearchParams();
+  for (const key of CMP_KEY_ORDER) {
+    const v = params.get(key);
+    if (v !== null) ordered.set(key, v);
+  }
+  return ordered;
+}
+
+/** Verbatim tex.* slice of a query (original order preserved). */
+export function texQuery(query: URLSearchParams): URLSearchParams {
+  const out = new URLSearchParams();
+  for (const [key, value] of query) {
+    if (key.startsWith("tex.")) out.append(key, value);
+  }
+  return out;
+}
+
+/** Combined share query: bare (stln) keys verbatim in original order, then
+ * tex.* verbatim, then freshly encoded cmp.* (docs/30 section 5 canonical
+ * order). Only cmp.* is regenerated — texture and illustration parts pass
+ * through untouched so unknown keys survive sharing. */
+export function buildShareQuery(
+  current: URLSearchParams,
+  cmpParams: URLSearchParams,
+): URLSearchParams {
+  const out = new URLSearchParams();
+  for (const [key, value] of current) {
+    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) {
+      out.append(key, value);
+    }
+  }
+  for (const [key, value] of texQuery(current)) out.append(key, value);
+  for (const [key, value] of cmpParams) out.append(key, value);
+  return out;
+}

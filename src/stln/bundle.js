@@ -2050,6 +2050,47 @@ function bitmapSize(r) {
     bh: Math.round(r.h * r.dpr)
   };
 }
+var CMP_KEY_ORDER = [
+  "cmp.order",
+  "cmp.mode",
+  "cmp.opacity",
+  "cmp.ignoreBg",
+  "cmp.w",
+  "cmp.h",
+  "cmp.dpr"
+];
+function encodeCmpSettings(cmp2, raster2) {
+  const params = new URLSearchParams();
+  if (cmp2.order !== DEFAULT_CMP.order) params.set("cmp.order", cmp2.order);
+  if (cmp2.mode !== DEFAULT_CMP.mode) params.set("cmp.mode", cmp2.mode);
+  if (cmp2.opacity !== DEFAULT_CMP.opacity) params.set("cmp.opacity", String(cmp2.opacity));
+  if (cmp2.ignoreBg) params.set("cmp.ignoreBg", "1");
+  if (raster2.w !== DEFAULT_RASTER.w) params.set("cmp.w", String(raster2.w));
+  if (raster2.h !== DEFAULT_RASTER.h) params.set("cmp.h", String(raster2.h));
+  if (raster2.dpr !== DEFAULT_RASTER.dpr) params.set("cmp.dpr", String(raster2.dpr));
+  const ordered = new URLSearchParams();
+  for (const key of CMP_KEY_ORDER) {
+    const v = params.get(key);
+    if (v !== null) ordered.set(key, v);
+  }
+  return ordered;
+}
+function texQuery(query) {
+  const out = new URLSearchParams();
+  for (const [key, value] of query) {
+    if (key.startsWith("tex.")) out.append(key, value);
+  }
+  return out;
+}
+function buildShareQuery(current, cmpParams) {
+  const out = new URLSearchParams();
+  for (const [key, value] of current) {
+    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) out.append(key, value);
+  }
+  for (const [key, value] of texQuery(current)) out.append(key, value);
+  for (const [key, value] of cmpParams) out.append(key, value);
+  return out;
+}
 
 // src/stln/main.ts
 var lang = "en";
@@ -2131,8 +2172,20 @@ var UI = {
     ja: "\u5171\u6709"
   },
   shareNote: {
-    en: "Combined share links arrive in C5.",
-    ja: "\u7D71\u5408\u5171\u6709\u30EA\u30F3\u30AF\u306F C5 \u3067\u5BFE\u5FDC\u3057\u307E\u3059\u3002"
+    en: "Copy a URL that reproduces this composite (illustration + texture + settings).",
+    ja: "\u3053\u306E\u5408\u6210\u3092\u518D\u73FE\u3059\u308B URL\uFF08\u30A4\u30E9\u30B9\u30C8\uFF0B\u30C6\u30AF\u30B9\u30C1\u30E3\uFF0B\u8A2D\u5B9A\uFF09\u3092\u30B3\u30D4\u30FC\u3057\u307E\u3059\u3002"
+  },
+  shareLinkBtn: {
+    en: "Copy link",
+    ja: "\u30EA\u30F3\u30AF\u3092\u30B3\u30D4\u30FC"
+  },
+  copySuccess: {
+    en: "Copied",
+    ja: "\u30B3\u30D4\u30FC\u3057\u307E\u3057\u305F"
+  },
+  copyFailed: {
+    en: "Copy failed",
+    ja: "\u30B3\u30D4\u30FC\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F"
   },
   footerNote: {
     en: "Composite lab: paper texture over Straightlines illustration via Canvas.",
@@ -2210,10 +2263,11 @@ var cmp = {
 var raster = {
   ...DEFAULT_RASTER
 };
-function showError(message) {
+function showError(message, detail) {
   const box = document.getElementById("stlnError");
   if (!box) return;
-  box.textContent = T(message);
+  box.textContent = detail ? `${T(message)}
+${detail}` : T(message);
   box.hidden = false;
 }
 function hideError() {
@@ -2295,10 +2349,10 @@ async function paintComposite(query) {
       paintLayers(ctx, texLayer, artLayer, settings, bw, bh);
     }
     canvas.hidden = false;
-  } catch {
+  } catch (err) {
     if (gen !== paintGen) return;
     canvas.hidden = true;
-    showError(RASTERIZE_FAILED);
+    showError(RASTERIZE_FAILED, err instanceof Error ? err.message : String(err));
   }
 }
 function textureBitmapSize(query) {
@@ -2427,6 +2481,54 @@ function exportPNG() {
     setTimeout(() => URL.revokeObjectURL(url), 1e3);
   }, "image/png");
 }
+function shareURL() {
+  const query = buildShareQuery(new URLSearchParams(location.search), encodeCmpSettings(cmp, raster));
+  const base = `${location.origin}${location.pathname}`;
+  const str = query.toString();
+  return str ? `${base}?${str}` : base;
+}
+function copyText(text) {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackCopy(text));
+  }
+  return Promise.resolve(fallbackCopy(text));
+}
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+function buildShareRow() {
+  const box = document.getElementById("shareRow");
+  if (!box) return;
+  box.innerHTML = "";
+  const btn = document.createElement("button");
+  btn.textContent = T(UI.shareLinkBtn);
+  btn.addEventListener("click", () => {
+    copyText(shareURL()).then((ok) => {
+      const old = btn.textContent;
+      btn.textContent = ok ? T(UI.copySuccess) : T(UI.copyFailed);
+      setTimeout(() => {
+        btn.textContent = T(UI.shareLinkBtn);
+      }, 1400);
+      void old;
+    });
+  });
+  box.appendChild(btn);
+}
 function init() {
   applyI18n();
   const query = new URLSearchParams(location.search);
@@ -2435,6 +2537,7 @@ function init() {
   renderStatus(query);
   buildCmpControls();
   buildRasterControls();
+  buildShareRow();
   paintComposite(query);
   document.getElementById("exportBtn")?.addEventListener("click", exportPNG);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
@@ -2446,6 +2549,7 @@ function init() {
         renderStatus(new URLSearchParams(location.search));
         buildCmpControls();
         buildRasterControls();
+        buildShareRow();
       }
     });
   });

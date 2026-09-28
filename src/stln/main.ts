@@ -14,12 +14,14 @@ import {
 import { deepClone, DEFAULTS, generateSVG } from "../js/texture-core.js";
 import {
   bitmapSize,
+  buildShareQuery,
   CMP_BLENDS,
   CMP_ORDERS,
   type CompositeSettings,
   decodeIllustration,
   DEFAULT_CMP,
   DEFAULT_RASTER,
+  encodeCmpSettings,
   paintLayers,
   parseCmpSettings,
   parseRasterSettings,
@@ -75,9 +77,13 @@ const UI: Record<string, Text> = {
   },
   shareTitle: { en: "Share", ja: "共有" },
   shareNote: {
-    en: "Combined share links arrive in C5.",
-    ja: "統合共有リンクは C5 で対応します。",
+    en:
+      "Copy a URL that reproduces this composite (illustration + texture + settings).",
+    ja: "この合成を再現する URL（イラスト＋テクスチャ＋設定）をコピーします。",
   },
+  shareLinkBtn: { en: "Copy link", ja: "リンクをコピー" },
+  copySuccess: { en: "Copied", ja: "コピーしました" },
+  copyFailed: { en: "Copy failed", ja: "コピーできませんでした" },
   footerNote: {
     en:
       "Composite lab: paper texture over Straightlines illustration via Canvas.",
@@ -171,10 +177,10 @@ let paintGen = 0;
 let cmp: CompositeSettings = { ...DEFAULT_CMP };
 let raster: RasterSettings = { ...DEFAULT_RASTER };
 
-function showError(message: Text): void {
+function showError(message: Text, detail?: string): void {
   const box = document.getElementById("stlnError");
   if (!box) return;
-  box.textContent = T(message);
+  box.textContent = detail ? `${T(message)}\n${detail}` : T(message);
   box.hidden = false;
 }
 
@@ -246,10 +252,13 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
       paintLayers(ctx, texLayer, artLayer, settings, bw, bh);
     }
     canvas.hidden = false;
-  } catch {
+  } catch (err) {
     if (gen !== paintGen) return;
     canvas.hidden = true;
-    showError(RASTERIZE_FAILED);
+    showError(
+      RASTERIZE_FAILED,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
@@ -421,6 +430,67 @@ function exportPNG(): void {
   }, "image/png");
 }
 
+/* ---------- combined share link (C5; docs/30 section 5) ---------- */
+
+function shareURL(): string {
+  const query = buildShareQuery(
+    new URLSearchParams(location.search),
+    encodeCmpSettings(cmp, raster),
+  );
+  const base = `${location.origin}${location.pathname}`;
+  const str = query.toString();
+  return str ? `${base}?${str}` : base;
+}
+
+function copyText(text: string): Promise<boolean> {
+  if (
+    typeof navigator !== "undefined" && navigator.clipboard?.writeText
+  ) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() =>
+      fallbackCopy(text)
+    );
+  }
+  return Promise.resolve(fallbackCopy(text));
+}
+
+function fallbackCopy(text: string): boolean {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "-1000px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+function buildShareRow(): void {
+  const box = document.getElementById("shareRow");
+  if (!box) return;
+  box.innerHTML = "";
+  const btn = document.createElement("button");
+  btn.textContent = T(UI.shareLinkBtn);
+  btn.addEventListener("click", () => {
+    copyText(shareURL()).then((ok) => {
+      const old = btn.textContent;
+      btn.textContent = ok ? T(UI.copySuccess) : T(UI.copyFailed);
+      setTimeout(() => {
+        btn.textContent = T(UI.shareLinkBtn);
+      }, 1400);
+      void old;
+    });
+  });
+  box.appendChild(btn);
+}
+
 function init(): void {
   applyI18n();
   const query = new URLSearchParams(location.search);
@@ -429,6 +499,7 @@ function init(): void {
   renderStatus(query);
   buildCmpControls();
   buildRasterControls();
+  buildShareRow();
   paintComposite(query);
   document.getElementById("exportBtn")?.addEventListener("click", exportPNG);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
@@ -440,6 +511,7 @@ function init(): void {
         renderStatus(new URLSearchParams(location.search));
         buildCmpControls();
         buildRasterControls();
+        buildShareRow();
       }
     });
   });
