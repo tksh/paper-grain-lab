@@ -363,3 +363,242 @@ export function encodeTextureState(st) {
   }
   return params;
 }
+
+/* ---------- decode-render: URL params to SVG (exact) ----------
+ * Pours literal values into the fixed 8-slot template in slot order,
+ * branching only on flag/selector presence (docs/10 section 6). Never needs
+ * slider semantics. Lenient: unknown keys ignored, malformed values fall
+ * back to TEX_DEFAULTS (payloads without a default fall back to zeros, which
+ * render the stage inert but keep the page alive). */
+function rawList(params, key) {
+  // Comma- or space-separated literal to space-separated SVG form.
+  const raw = params.get(key);
+  if (typeof raw !== "string") return null;
+  const parts = raw.split(/[\s,]+/).filter((s) => s !== "");
+  if (parts.length === 0) return null;
+  if (parts.some((s) => !Number.isFinite(Number(s)))) return null;
+  return parts.join(" ");
+}
+
+function singleNumber(params, key, fallbackKey) {
+  const list = rawList(params, key);
+  if (list !== null && !list.includes(" ")) return list;
+  return TEX_DEFAULTS[fallbackKey];
+}
+
+function matrixOrZeros(params, key) {
+  // The generator separates the four 5-number rows with double spaces; the
+  // URL carries flat comma lists, so regroup here to stay byte-identical.
+  const list = rawList(params, key);
+  const nums = list !== null && list.split(" ").length === 20
+    ? list.split(" ")
+    : new Array(20).fill("0");
+  return [0, 1, 2, 3].map((r) => nums.slice(r * 5, r * 5 + 5).join(" ")).join(
+    "  ",
+  );
+}
+
+function tableOrDefault(params, key) {
+  const list = rawList(params, key);
+  if (list !== null) return list;
+  return "0 1";
+}
+
+function colorOrDefault(params, key, fallbackKey) {
+  const hex = params.has(key) ? stripHash(params.get(key)) : null;
+  return `#${hex ?? TEX_DEFAULTS[fallbackKey]}`;
+}
+
+function intOrDefault(params, key, fallbackKey) {
+  const n = params.has(key) ? parseInteger(params.get(key)) : null;
+  return n ?? TEX_DEFAULTS[fallbackKey];
+}
+
+export function decodeTextureToSvg(params) {
+  const lines = [];
+  const L = (ind, s) => lines.push("  ".repeat(ind) + s);
+  const size = params.has("tex.sv1.viewBox")
+    ? (parseViewBox(params.get("tex.sv1.viewBox")) ?? 300)
+    : Number(TEX_DEFAULTS["tex.sv1.viewBox"].split(",")[2]);
+
+  L(
+    0,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="100%" height="100%">`,
+  );
+  L(1, `<defs>`);
+  L(2, `<filter id="fp-filter" x="-20%" y="-20%" width="140%" height="140%">`);
+
+  let cur = "noise1";
+  // Stage 1: required.
+  const type1 = parseVocab(params.get("tex.tb1.type"), NOISE_TYPES) ??
+    TEX_DEFAULTS["tex.tb1.type"];
+  const freqParts = (rawList(params, "tex.tb1.baseFrequency") ??
+    TEX_DEFAULTS["tex.tb1.baseFrequency"]).split(" ");
+  const freqA = freqParts.length <= 2
+    ? freqParts.join(" ")
+    : TEX_DEFAULTS["tex.tb1.baseFrequency"];
+  const oct1 = intOrDefault(params, "tex.tb1.numOctaves", "tex.tb1.numOctaves");
+  const seed1 = intOrDefault(params, "tex.tb1.seed", "tex.tb1.seed");
+  L(
+    3,
+    `<feTurbulence type="${type1}" baseFrequency="${freqA}" numOctaves="${oct1}" seed="${seed1}" result="noise1"/>`,
+  );
+
+  // Stage 2: weave (tex.w presence is the flag; tb2 derives from tb1).
+  const weaveBlend = params.has("tex.w")
+    ? parseVocab(params.get("tex.w"), WEAVE_BLENDS)
+    : null;
+  if (weaveBlend !== null) {
+    const freqB = freqParts.length === 2
+      ? `${freqParts[1]} ${freqParts[0]}`
+      : freqA;
+    L(
+      3,
+      `<feTurbulence type="${type1}" baseFrequency="${freqB}" numOctaves="${oct1}" seed="${
+        Number(seed1) + 1
+      }" result="noise2"/>`,
+    );
+    L(
+      3,
+      `<feBlend in="noise1" in2="noise2" mode="${weaveBlend}" result="noiseWeave"/>`,
+    );
+    cur = "noiseWeave";
+  }
+
+  // Stages 3+7: pulp (tex.p presence is the flag).
+  if (params.has("tex.p")) {
+    L(
+      3,
+      `<feTurbulence type="fractalNoise" baseFrequency="${
+        singleNumber(params, "tex.tb3.baseFrequency", "tex.tb3.baseFrequency")
+      }" numOctaves="${
+        intOrDefault(params, "tex.tb3.numOctaves", "tex.tb3.numOctaves")
+      }" seed="${Number(seed1) + 2}" result="fiberRaw"/>`,
+    );
+    L(
+      3,
+      `<feGaussianBlur in="fiberRaw" stdDeviation="${
+        singleNumber(params, "tex.gb1.stdDeviation", "tex.gb1.stdDeviation")
+      }" result="fiberSoft"/>`,
+    );
+  }
+
+  // Stage 4: distortion (tex.d presence is the flag).
+  if (params.has("tex.d")) {
+    L(
+      3,
+      `<feTurbulence type="turbulence" baseFrequency="${
+        singleNumber(params, "tex.tb4.baseFrequency", "tex.tb4.baseFrequency")
+      }" numOctaves="${
+        intOrDefault(params, "tex.tb4.numOctaves", "tex.tb4.numOctaves")
+      }" seed="${Number(seed1) + 3}" result="dispMap"/>`,
+    );
+    L(
+      3,
+      `<feDisplacementMap in="${cur}" in2="dispMap" scale="${
+        singleNumber(params, "tex.dm1.scale", "tex.dm1.scale")
+      }" xChannelSelector="R" yChannelSelector="G" result="noiseWarp"/>`,
+    );
+    cur = "noiseWarp";
+  }
+
+  // Stage 5: lighting (tex.light presence is the flag + element choice).
+  const lightSel = params.has("tex.light")
+    ? parseVocab(params.get("tex.light"), LIGHT_SELECTORS)
+    : null;
+  if (lightSel === "diffuse" || lightSel === "specular") {
+    const el = lightSel === "diffuse" ? "dl1" : "sl1";
+    const tag = lightSel === "diffuse"
+      ? "feDiffuseLighting"
+      : "feSpecularLighting";
+    const color = colorOrDefault(
+      params,
+      `tex.${el}.lighting-color`,
+      `tex.${el}.lighting-color`,
+    );
+    const surf = singleNumber(
+      params,
+      `tex.${el}.surfaceScale`,
+      `tex.${el}.surfaceScale`,
+    );
+    const az = intOrDefault(params, `tex.${el}.azimuth`, `tex.${el}.azimuth`);
+    const el2 = intOrDefault(
+      params,
+      `tex.${el}.elevation`,
+      `tex.${el}.elevation`,
+    );
+    const open = lightSel === "diffuse"
+      ? `<${tag} in="${cur}" lighting-color="${color}" diffuseConstant="1" surfaceScale="${surf}" result="lit">`
+      : `<${tag} in="${cur}" lighting-color="${color}" specularConstant="1" specularExponent="${
+        singleNumber(
+          params,
+          `tex.${el}.specularExponent`,
+          `tex.${el}.specularExponent`,
+        )
+      }" surfaceScale="${surf}" result="lit">`;
+    L(3, open);
+    L(4, `<feDistantLight azimuth="${az}" elevation="${el2}"/>`);
+    L(3, `</${tag}>`);
+    cur = "lit";
+  }
+
+  // Stage 6: tinting (tex.tint presence is the flag + element choice).
+  const tintSel = params.has("tex.tint")
+    ? parseVocab(params.get("tex.tint"), TINT_SELECTORS)
+    : null;
+  if (tintSel === "matrix") {
+    L(
+      3,
+      `<feColorMatrix in="${cur}" type="matrix" values="${
+        matrixOrZeros(params, "tex.cm1.values")
+      }" result="colored"/>`,
+    );
+    cur = "colored";
+  } else if (tintSel === "table") {
+    L(3, `<feComponentTransfer in="${cur}" result="colored">`);
+    const table = tableOrDefault(params, "tex.ct1.tableValues");
+    L(4, `<feFuncR type="table" tableValues="${table}"/>`);
+    L(4, `<feFuncG type="table" tableValues="${table}"/>`);
+    L(4, `<feFuncB type="table" tableValues="${table}"/>`);
+    L(3, `</feComponentTransfer>`);
+    cur = "colored";
+  }
+
+  // Stage 7 (part 2): tied to tex.p. bl2.mode is hardcoded to multiply by the
+  // generator, so a foreign tex.bl2.mode is intentionally ignored here.
+  if (params.has("tex.p")) {
+    L(
+      3,
+      `<feColorMatrix in="fiberSoft" type="matrix" values="${
+        matrixOrZeros(params, "tex.cm2.values")
+      }" result="fiberMask"/>`,
+    );
+    L(
+      3,
+      `<feBlend in="${cur}" in2="fiberMask" mode="multiply" result="coloredFiber"/>`,
+    );
+    cur = "coloredFiber";
+  }
+
+  // Stage 8 + backing + canvas.
+  const blend3 = parseVocab(params.get("tex.bl3.mode"), COMPOSITE_BLENDS) ??
+    TEX_DEFAULTS["tex.bl3.mode"];
+  L(3, `<feBlend in="SourceGraphic" in2="${cur}" mode="${blend3}"/>`);
+  L(2, `</filter>`);
+  L(1, `</defs>`);
+  L(
+    1,
+    `<rect width="100%" height="100%" fill="${
+      colorOrDefault(params, "tex.rc1.fill", "tex.rc1.fill")
+    }"/>`,
+  );
+  const opacity = singleNumber(params, "tex.rc2.opacity", "tex.rc2.opacity");
+  L(
+    1,
+    `<rect width="100%" height="100%" fill="${
+      colorOrDefault(params, "tex.rc2.fill", "tex.rc2.fill")
+    }" filter="url(#fp-filter)" opacity="${opacity}"/>`,
+  );
+  L(0, `</svg>`);
+  return lines.join("\n");
+}
