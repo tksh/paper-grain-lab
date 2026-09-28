@@ -10,6 +10,8 @@
   --gold: #6e6e6e;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Hiragino Mincho ProN", serif;
+  /* Neutral gray halfway between #ffffff and #ececec for the code header. */
+  --code-head-bg: #f6f6f6;
 }
 *{ box-sizing: border-box; }
 html,body{ margin:0; padding:0; background:var(--paper-bg); color:var(--ink); font-family: var(--mono); }
@@ -300,7 +302,7 @@ details.section .desc{ font-size: .68rem; color: var(--ink-soft); line-height:1.
 .code-card{ background: var(--panel); border:1px solid var(--line); border-radius:3px; overflow:hidden; }
 .code-head{
   display:flex; justify-content:space-between; align-items:center;
-  padding: 8px 14px; background: var(--panel-2); color: var(--ink-soft); font-size:.7rem;
+  padding: 8px 14px; background: var(--code-head-bg); color: var(--accent); font-size:.7rem;
   border-bottom: 1px solid var(--line);
 }
 .code-head button{
