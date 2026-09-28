@@ -6,7 +6,7 @@
  * malformed values fall back to the defaults below (lenient policy).
  * See docs/10-texture-url-spec.md sections 3-4.
  */
-import { fmt } from "./texture-core.js";
+import { fmt, hexToRgb01 } from "./texture-core.js";
 
 export const TEX_PREFIX = "tex.";
 
@@ -154,4 +154,212 @@ export function parseInteger(raw) {
 
 export function parseVocab(raw, list) {
   return typeof raw === "string" && list.includes(raw) ? raw : null;
+}
+
+/* ---------- literal matrix builders (mirror the SVG generator math) ----------
+ * Each returns the comma-separated URL form of a 20-number feColorMatrix
+ * values attribute (SVG uses spaces; URLs use commas). Computed components
+ * go through fmt() exactly as the generator does, so render (A3) stays
+ * byte-identical by converting commas back to spaces. */
+
+function rgb01(color) {
+  const { r, g, b } = hexToRgb01(color);
+  return [fmt(r), fmt(g), fmt(b)];
+}
+
+function cmAlphaValues(grainAlpha) {
+  return [
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    fmt(grainAlpha),
+    "0",
+  ].join(",");
+}
+
+function cmStainValues(color, slope, bias, spotted) {
+  const [r, g, b] = rgb01(color);
+  const s = fmt(slope), bi = fmt(bias);
+  const alphaRow = spotted ? [s, s, s, "0", bi] : [s, "0", "0", "0", bi];
+  return [
+    "0",
+    "0",
+    "0",
+    "0",
+    r,
+    "0",
+    "0",
+    "0",
+    "0",
+    g,
+    "0",
+    "0",
+    "0",
+    "0",
+    b,
+    ...alphaRow,
+  ].join(",");
+}
+
+function cmHazeValues(color, grainAlpha) {
+  const [r, g, b] = rgb01(color);
+  return [
+    "0",
+    "0",
+    "0",
+    "0",
+    r,
+    "0",
+    "0",
+    "0",
+    "0",
+    g,
+    "0",
+    "0",
+    "0",
+    "0",
+    b,
+    "0",
+    "0",
+    "0",
+    fmt(grainAlpha),
+    "0",
+  ].join(",");
+}
+
+function cmFiberValues(fiberAlpha) {
+  return [
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    fmt(fiberAlpha),
+    "0",
+  ].join(",");
+}
+
+function tableValues(levels) {
+  return Array.from({ length: levels }, (_, i) => i % 2).join(",");
+}
+
+/* ---------- encode: slider state to URL params ----------
+ * Emits only non-default keys (docs/10 section 4 table). Flag/selector keys
+ * have no default: presence means on. Output follows TEX_KEY_ORDER so share
+ * URLs are stable and diffable. Returns a URLSearchParams. */
+export function encodeTextureState(st) {
+  const found = new Map();
+  // diff() records key=value only when it differs from the table default.
+  const diff = (key, value) => {
+    if (value !== TEX_DEFAULTS[key]) found.set(key, value);
+  };
+
+  // Stage 1: noise (always structurally present; only diffs are written).
+  diff("tex.tb1.type", st.noise.type);
+  diff(
+    "tex.tb1.baseFrequency",
+    formatFrequency(st.noise.freqX, st.noise.freqY, st.noise.anisotropic),
+  );
+  diff("tex.tb1.numOctaves", String(st.noise.octaves));
+  diff("tex.tb1.seed", String(st.noise.seed));
+
+  // Stage 2: weave (presence of tex.w is the flag).
+  if (st.weave.enabled) found.set("tex.w", st.weave.blend);
+
+  // Stages 3+7: pulp (presence of tex.p is the flag; payloads required).
+  if (st.pulp.enabled) {
+    found.set("tex.p", "1");
+    diff("tex.tb3.baseFrequency", fmt(st.pulp.fiberFreq));
+    diff("tex.tb3.numOctaves", String(st.pulp.fiberOctaves));
+    diff("tex.gb1.stdDeviation", fmt(st.pulp.blur));
+    found.set("tex.cm2.values", cmFiberValues(st.pulp.fiberAlpha));
+    // NOTE: bl2.mode is hardcoded to "multiply" by the generator, so
+    // tex.bl2.mode is never written (it always equals its default).
+  }
+
+  // Stage 4: distortion (presence of tex.d is the flag).
+  if (st.distort.enabled) {
+    found.set("tex.d", "1");
+    diff("tex.tb4.baseFrequency", fmt(st.distort.freq));
+    diff("tex.tb4.numOctaves", String(st.distort.octaves));
+    diff("tex.dm1.scale", fmt(st.distort.scale));
+  }
+
+  // Stage 5: lighting (presence of tex.light is the flag + element choice).
+  if (st.light.mode === "diffuse" || st.light.mode === "specular") {
+    const el = st.light.mode === "diffuse" ? "dl1" : "sl1";
+    found.set("tex.light", st.light.mode);
+    diff(`tex.${el}.surfaceScale`, fmt(st.light.surfaceScale));
+    if (st.light.mode === "specular") {
+      diff(`tex.${el}.specularExponent`, String(st.light.specExp));
+    }
+    diff(`tex.${el}.azimuth`, String(st.light.azimuth));
+    diff(`tex.${el}.elevation`, String(st.light.elevation));
+    diff(`tex.${el}.lighting-color`, stripHash(st.light.color));
+  }
+
+  // Stage 6: tinting (presence of tex.tint is the flag + element choice).
+  if (st.tint.mode === "table") {
+    found.set("tex.tint", "table");
+    found.set("tex.ct1.tableValues", tableValues(st.tint.levels));
+  } else if (st.tint.mode !== "none") {
+    found.set("tex.tint", "matrix");
+    const t = st.tint;
+    if (t.mode === "alpha") {
+      found.set("tex.cm1.values", cmAlphaValues(t.grainAlpha));
+    } else if (t.mode === "stainMottle") {
+      found.set(
+        "tex.cm1.values",
+        cmStainValues(t.color, t.alphaSlope, t.alphaBias, false),
+      );
+    } else if (t.mode === "stainSpots") {
+      found.set(
+        "tex.cm1.values",
+        cmStainValues(t.color, t.alphaSlope, t.alphaBias, true),
+      );
+    } else if (t.mode === "stainHaze") {
+      found.set("tex.cm1.values", cmHazeValues(t.color, t.grainAlpha));
+    }
+  }
+
+  // Stage 8 + backing + canvas: only diffs are written.
+  diff("tex.bl3.mode", st.composite.blend);
+  diff("tex.rc1.fill", stripHash(st.base.fillColor));
+  diff("tex.rc2.fill", stripHash(st.base.highlightColor));
+  diff("tex.rc2.opacity", fmt(st.composite.finalOpacity));
+  diff("tex.sv1.viewBox", formatViewBox(st.canvas.size));
+
+  const params = new URLSearchParams();
+  for (const key of TEX_KEY_ORDER) {
+    if (found.has(key)) params.set(key, found.get(key));
+  }
+  return params;
 }
