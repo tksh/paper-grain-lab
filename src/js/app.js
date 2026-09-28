@@ -11,6 +11,7 @@ import {
   setPath,
 } from "./texture-core.js";
 import { decodeTextureToState, encodeTextureState } from "./tex-codec.js";
+import { highlightSVG } from "./highlight.js";
 
 (function(){
   "use strict";
@@ -136,7 +137,9 @@ import { decodeTextureToState, encodeTextureState } from "./tex-codec.js";
   function render(){
     const svgString = generateSVG(state);
     swatchWrap.innerHTML = svgString;
-    codeOut.textContent = svgString;
+    // Highlighted view only: spans carry no text of their own, so the copy
+    // path (codeOut.textContent) still yields the exact generator output.
+    codeOut.innerHTML = highlightSVG(svgString);
     Object.keys(sectionDotEls).forEach(key=>{
       const active = new Set(sectionTokens(key, state));
       sectionDotEls[key].innerHTML = dotsHTML(STATIC_SECTION_TOKENS[key], active);

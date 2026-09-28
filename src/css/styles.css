@@ -288,6 +288,11 @@ pre.code{
   font-size: .72rem; line-height:1.6; font-family: var(--mono);
   white-space: pre;
 }
+pre.code .tok{
+  padding: 0 4px;
+  border-radius: 3px;
+  color: var(--ink);
+}
 
 footer.note{
   padding: 10px clamp(16px,4vw,40px) 40px; font-size:.68rem; color: var(--ink-soft); line-height:1.7;

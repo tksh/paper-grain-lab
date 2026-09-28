@@ -4,7 +4,7 @@
     "@tksh/stln-codec": "jsr:@tksh/stln-codec@0.1.3"
   },
   "tasks": {
-    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js",
+    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js",
     "lint": "deno lint",
     "fmt": "deno fmt",
     "test": "deno test --allow-read tests/"

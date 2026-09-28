@@ -11,7 +11,7 @@ Product behavior lives in the other `docs/` files, not here.
     "@tksh/stln-codec": "jsr:@tksh/stln-codec@0.1.3"
   },
   "tasks": {
-    "check": "deno check src/js/app.js",
+    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js",
     "lint": "deno lint",
     "fmt": "deno fmt"
   },
@@ -34,7 +34,7 @@ Phase 2 additions (when `src/stln/main.ts` and `tests/` land):
 ```jsonc
 {
   "tasks": {
-    "check": "deno check src/js/app.js src/stln/main.ts",
+    "check": "deno check src/js/app.js src/js/tex-codec.js src/js/texture-core.js src/js/highlight.js src/stln/main.ts",
     "bundle:stln": "deno bundle --platform=browser --format=esm --outfile=src/stln/bundle.js src/stln/main.ts",
     "test": "deno test --allow-read tests/"
   }
