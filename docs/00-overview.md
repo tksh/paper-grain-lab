@@ -22,6 +22,9 @@ implementation of the texture pipeline; the composite page reuses it.
   (`docs/30-integration-spec.md`) with composite controls
   (`docs/20-composite-spec.md`), PNG export (lossless WebP / JPEG XL later).
 
+Commit-level implementation order for both phases lives in
+`docs/60-task-list.md`.
+
 ## Requirements that apply to everything
 
 - **Development language is English only.** Docs, code comments, commit
