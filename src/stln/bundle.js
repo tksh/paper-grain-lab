@@ -154,6 +154,33 @@ function generateSVG(st) {
 }
 
 // src/js/tex-codec.js
+var TEX_DEFAULTS = {
+  "tex.tb1.type": "fractalNoise",
+  "tex.tb1.baseFrequency": "0.05",
+  "tex.tb1.numOctaves": "3",
+  "tex.tb1.seed": "2",
+  "tex.tb3.baseFrequency": "0.08",
+  "tex.tb3.numOctaves": "2",
+  "tex.gb1.stdDeviation": "1.5",
+  "tex.tb4.baseFrequency": "0.01",
+  "tex.tb4.numOctaves": "2",
+  "tex.dm1.scale": "20",
+  "tex.dl1.surfaceScale": "2",
+  "tex.dl1.azimuth": "60",
+  "tex.dl1.elevation": "55",
+  "tex.dl1.lighting-color": "ffffff",
+  "tex.sl1.surfaceScale": "2",
+  "tex.sl1.specularExponent": "12",
+  "tex.sl1.azimuth": "60",
+  "tex.sl1.elevation": "55",
+  "tex.sl1.lighting-color": "ffffff",
+  "tex.bl2.mode": "multiply",
+  "tex.bl3.mode": "multiply",
+  "tex.rc1.fill": "f6f3eb",
+  "tex.rc2.fill": "faf8f4",
+  "tex.rc2.opacity": "0.9",
+  "tex.sv1.viewBox": "0,0,300,300"
+};
 var NOISE_TYPES = [
   "fractalNoise",
   "turbulence"
@@ -216,6 +243,114 @@ function parseInteger(raw) {
 }
 function parseVocab(raw, list) {
   return typeof raw === "string" && list.includes(raw) ? raw : null;
+}
+function rawList(params, key) {
+  const raw = params.get(key);
+  if (typeof raw !== "string") return null;
+  const parts = raw.split(/[\s,]+/).filter((s) => s !== "");
+  if (parts.length === 0) return null;
+  if (parts.some((s) => !Number.isFinite(Number(s)))) return null;
+  return parts.join(" ");
+}
+function singleNumber(params, key, fallbackKey) {
+  const list = rawList(params, key);
+  if (list !== null && !list.includes(" ")) return list;
+  return TEX_DEFAULTS[fallbackKey];
+}
+function matrixOrZeros(params, key) {
+  const list = rawList(params, key);
+  const nums = list !== null && list.split(" ").length === 20 ? list.split(" ") : new Array(20).fill("0");
+  return [
+    0,
+    1,
+    2,
+    3
+  ].map((r) => nums.slice(r * 5, r * 5 + 5).join(" ")).join("  ");
+}
+function tableOrDefault(params, key) {
+  const list = rawList(params, key);
+  if (list !== null) return list;
+  return "0 1";
+}
+function colorOrDefault(params, key, fallbackKey) {
+  const hex = params.has(key) ? stripHash(params.get(key)) : null;
+  return `#${hex ?? TEX_DEFAULTS[fallbackKey]}`;
+}
+function intOrDefault(params, key, fallbackKey) {
+  const n = params.has(key) ? parseInteger(params.get(key)) : null;
+  return n ?? TEX_DEFAULTS[fallbackKey];
+}
+function decodeTextureToSvg(params) {
+  const lines = [];
+  const L = (ind, s) => lines.push("  ".repeat(ind) + s);
+  const size = params.has("tex.sv1.viewBox") ? parseViewBox(params.get("tex.sv1.viewBox")) ?? 300 : Number(TEX_DEFAULTS["tex.sv1.viewBox"].split(",")[2]);
+  L(0, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="100%" height="100%">`);
+  L(1, `<defs>`);
+  L(2, `<filter id="fp-filter" x="-20%" y="-20%" width="140%" height="140%">`);
+  let cur = "noise1";
+  const type1 = parseVocab(params.get("tex.tb1.type"), NOISE_TYPES) ?? TEX_DEFAULTS["tex.tb1.type"];
+  const freqParts = (rawList(params, "tex.tb1.baseFrequency") ?? TEX_DEFAULTS["tex.tb1.baseFrequency"]).split(" ");
+  const freqA = freqParts.length <= 2 ? freqParts.join(" ") : TEX_DEFAULTS["tex.tb1.baseFrequency"];
+  const oct1 = intOrDefault(params, "tex.tb1.numOctaves", "tex.tb1.numOctaves");
+  const seed1 = intOrDefault(params, "tex.tb1.seed", "tex.tb1.seed");
+  L(3, `<feTurbulence type="${type1}" baseFrequency="${freqA}" numOctaves="${oct1}" seed="${seed1}" result="noise1"/>`);
+  const weaveBlend = params.has("tex.w") ? parseVocab(params.get("tex.w"), WEAVE_BLENDS) : null;
+  if (weaveBlend !== null) {
+    const freqB = freqParts.length === 2 ? `${freqParts[1]} ${freqParts[0]}` : freqA;
+    L(3, `<feTurbulence type="${type1}" baseFrequency="${freqB}" numOctaves="${oct1}" seed="${Number(seed1) + 1}" result="noise2"/>`);
+    L(3, `<feBlend in="noise1" in2="noise2" mode="${weaveBlend}" result="noiseWeave"/>`);
+    cur = "noiseWeave";
+  }
+  if (params.has("tex.p")) {
+    L(3, `<feTurbulence type="fractalNoise" baseFrequency="${singleNumber(params, "tex.tb3.baseFrequency", "tex.tb3.baseFrequency")}" numOctaves="${intOrDefault(params, "tex.tb3.numOctaves", "tex.tb3.numOctaves")}" seed="${Number(seed1) + 2}" result="fiberRaw"/>`);
+    L(3, `<feGaussianBlur in="fiberRaw" stdDeviation="${singleNumber(params, "tex.gb1.stdDeviation", "tex.gb1.stdDeviation")}" result="fiberSoft"/>`);
+  }
+  if (params.has("tex.d")) {
+    L(3, `<feTurbulence type="turbulence" baseFrequency="${singleNumber(params, "tex.tb4.baseFrequency", "tex.tb4.baseFrequency")}" numOctaves="${intOrDefault(params, "tex.tb4.numOctaves", "tex.tb4.numOctaves")}" seed="${Number(seed1) + 3}" result="dispMap"/>`);
+    L(3, `<feDisplacementMap in="${cur}" in2="dispMap" scale="${singleNumber(params, "tex.dm1.scale", "tex.dm1.scale")}" xChannelSelector="R" yChannelSelector="G" result="noiseWarp"/>`);
+    cur = "noiseWarp";
+  }
+  const lightSel = params.has("tex.light") ? parseVocab(params.get("tex.light"), LIGHT_SELECTORS) : null;
+  if (lightSel === "diffuse" || lightSel === "specular") {
+    const el = lightSel === "diffuse" ? "dl1" : "sl1";
+    const tag = lightSel === "diffuse" ? "feDiffuseLighting" : "feSpecularLighting";
+    const color = colorOrDefault(params, `tex.${el}.lighting-color`, `tex.${el}.lighting-color`);
+    const surf = singleNumber(params, `tex.${el}.surfaceScale`, `tex.${el}.surfaceScale`);
+    const az = intOrDefault(params, `tex.${el}.azimuth`, `tex.${el}.azimuth`);
+    const el2 = intOrDefault(params, `tex.${el}.elevation`, `tex.${el}.elevation`);
+    const open = lightSel === "diffuse" ? `<${tag} in="${cur}" lighting-color="${color}" diffuseConstant="1" surfaceScale="${surf}" result="lit">` : `<${tag} in="${cur}" lighting-color="${color}" specularConstant="1" specularExponent="${singleNumber(params, `tex.${el}.specularExponent`, `tex.${el}.specularExponent`)}" surfaceScale="${surf}" result="lit">`;
+    L(3, open);
+    L(4, `<feDistantLight azimuth="${az}" elevation="${el2}"/>`);
+    L(3, `</${tag}>`);
+    cur = "lit";
+  }
+  const tintSel = params.has("tex.tint") ? parseVocab(params.get("tex.tint"), TINT_SELECTORS) : null;
+  if (tintSel === "matrix") {
+    L(3, `<feColorMatrix in="${cur}" type="matrix" values="${matrixOrZeros(params, "tex.cm1.values")}" result="colored"/>`);
+    cur = "colored";
+  } else if (tintSel === "table") {
+    L(3, `<feComponentTransfer in="${cur}" result="colored">`);
+    const table = tableOrDefault(params, "tex.ct1.tableValues");
+    L(4, `<feFuncR type="table" tableValues="${table}"/>`);
+    L(4, `<feFuncG type="table" tableValues="${table}"/>`);
+    L(4, `<feFuncB type="table" tableValues="${table}"/>`);
+    L(3, `</feComponentTransfer>`);
+    cur = "colored";
+  }
+  if (params.has("tex.p")) {
+    L(3, `<feColorMatrix in="fiberSoft" type="matrix" values="${matrixOrZeros(params, "tex.cm2.values")}" result="fiberMask"/>`);
+    L(3, `<feBlend in="${cur}" in2="fiberMask" mode="multiply" result="coloredFiber"/>`);
+    cur = "coloredFiber";
+  }
+  const blend3 = parseVocab(params.get("tex.bl3.mode"), COMPOSITE_BLENDS) ?? TEX_DEFAULTS["tex.bl3.mode"];
+  L(3, `<feBlend in="SourceGraphic" in2="${cur}" mode="${blend3}"/>`);
+  L(2, `</filter>`);
+  L(1, `</defs>`);
+  L(1, `<rect width="100%" height="100%" fill="${colorOrDefault(params, "tex.rc1.fill", "tex.rc1.fill")}"/>`);
+  const opacity = singleNumber(params, "tex.rc2.opacity", "tex.rc2.opacity");
+  L(1, `<rect width="100%" height="100%" fill="${colorOrDefault(params, "tex.rc2.fill", "tex.rc2.fill")}" filter="url(#fp-filter)" opacity="${opacity}"/>`);
+  L(0, `</svg>`);
+  return lines.join("\n");
 }
 function approx(a, b, eps = 1e-6) {
   return Math.abs(a - b) <= eps;
@@ -1781,17 +1916,18 @@ async function decodeUrlParams(search) {
 // src/stln/composite.ts
 var STLN_PATH_MODE = "relativeMerged";
 var PREVIEW_SIZE = 1024;
-async function decodeIllustration(query) {
-  const data = await decodeUrlParams(query);
-  const svg = generateSvg(data, {
-    pathMode: STLN_PATH_MODE
+function stlnQuery(query) {
+  const out = new URLSearchParams();
+  for (const [key, value] of query) {
+    if (!key.startsWith("tex.") && !key.startsWith("cmp.")) out.append(key, value);
+  }
+  return out;
+}
+async function decodeIllustration(query, opts = {}) {
+  const data = await decodeUrlParams(stlnQuery(query));
+  return illustrationSvg(data, {
+    ignoreBg: opts.ignoreBg ?? false
   });
-  return {
-    svg,
-    viewBox: data.sizeData.viewbox,
-    width: data.sizeData.width,
-    height: data.sizeData.height
-  };
 }
 function withExplicitSize(svg, w, h) {
   const open = svg.match(/<svg\b[^>]*>/);
@@ -1809,6 +1945,83 @@ function coverDest(srcW, srcH, bitmap) {
     dw,
     dh
   };
+}
+var CMP_ORDER_TOP_TEXTURE = "tex-over-art";
+var CMP_ORDER_TOP_ART = "art-over-tex";
+var CMP_ORDERS = [
+  CMP_ORDER_TOP_TEXTURE,
+  CMP_ORDER_TOP_ART
+];
+var CMP_BLENDS = [
+  "source-over",
+  "multiply",
+  "screen",
+  "overlay",
+  "darken",
+  "lighten",
+  "color-dodge",
+  "color-burn",
+  "hard-light",
+  "soft-light",
+  "difference",
+  "exclusion",
+  "hue",
+  "saturation",
+  "color",
+  "luminosity"
+];
+var DEFAULT_CMP = {
+  order: CMP_ORDER_TOP_TEXTURE,
+  mode: "multiply",
+  opacity: 1,
+  ignoreBg: false
+};
+function parseCmpSettings(query) {
+  const orderRaw = query.get("cmp.order");
+  const order = orderRaw === CMP_ORDER_TOP_ART ? CMP_ORDER_TOP_ART : CMP_ORDER_TOP_TEXTURE;
+  const modeRaw = query.get("cmp.mode");
+  const mode = CMP_BLENDS.includes(modeRaw ?? "") ? modeRaw : DEFAULT_CMP.mode;
+  const opacityRaw = query.get("cmp.opacity");
+  const opacityNum = opacityRaw === null || opacityRaw.trim() === "" ? NaN : Number(opacityRaw);
+  const opacity = Number.isFinite(opacityNum) ? Math.min(1, Math.max(0, opacityNum)) : DEFAULT_CMP.opacity;
+  return {
+    order,
+    mode,
+    opacity,
+    ignoreBg: query.get("cmp.ignoreBg") === "1"
+  };
+}
+function withoutBackgroundGroup(data) {
+  const linesData = new Map(data.linesData);
+  linesData.delete(0);
+  return {
+    ...data,
+    linesData
+  };
+}
+function illustrationSvg(data, opts) {
+  const kept = opts.ignoreBg ? withoutBackgroundGroup(data) : data;
+  return {
+    svg: generateSvg(kept, {
+      pathMode: STLN_PATH_MODE
+    }),
+    viewBox: data.sizeData.viewbox,
+    width: data.sizeData.width,
+    height: data.sizeData.height
+  };
+}
+function paintLayers(ctx, bottom, top, cmp2, bitmap) {
+  ctx.clearRect(0, 0, bitmap, bitmap);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  const b = coverDest(bottom.width, bottom.height, bitmap);
+  ctx.drawImage(bottom.img, b.dx, b.dy, b.dw, b.dh);
+  ctx.globalCompositeOperation = cmp2.mode;
+  ctx.globalAlpha = cmp2.opacity;
+  const t = coverDest(top.width, top.height, bitmap);
+  ctx.drawImage(top.img, t.dx, t.dy, t.dw, t.dh);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
 }
 
 // src/stln/main.ts
@@ -1831,16 +2044,40 @@ var UI = {
     ja: "\u5408\u6210\u30D7\u30EC\u30D3\u30E5\u30FC"
   },
   previewNote: {
-    en: "Illustration preview. Texture compositing arrives in C3.",
-    ja: "\u30A4\u30E9\u30B9\u30C8\u306E\u30D7\u30EC\u30D3\u30E5\u30FC\u3002\u30C6\u30AF\u30B9\u30C1\u30E3\u5408\u6210\u306F C3 \u3067\u5BFE\u5FDC\u3057\u307E\u3059\u3002"
+    en: "Texture composited on top by default (multiply). Change it below.",
+    ja: "\u65E2\u5B9A\u3067\u306F\u30C6\u30AF\u30B9\u30C1\u30E3\u3092\u4E0A\u304B\u3089\u5408\u6210\u3057\u307E\u3059\uFF08multiply\uFF09\u3002\u4EE5\u4E0B\u3067\u5909\u66F4\u3067\u304D\u307E\u3059\u3002"
   },
   settingsTitle: {
     en: "Composite settings",
     ja: "\u5408\u6210\u8A2D\u5B9A"
   },
   settingsNote: {
-    en: "Order, blend mode, and opacity controls arrive in C3.",
-    ja: "\u9806\u5E8F\u30FB\u5408\u6210\u30E2\u30FC\u30C9\u30FB\u4E0D\u900F\u660E\u5EA6\u306E\u8A2D\u5B9A\u306F C3 \u3067\u5BFE\u5FDC\u3057\u307E\u3059\u3002"
+    en: "Order, mode, opacity, and background apply immediately.",
+    ja: "\u9806\u5E8F\u30FB\u30E2\u30FC\u30C9\u30FB\u4E0D\u900F\u660E\u5EA6\u30FB\u80CC\u666F\u306F\u5373\u6642\u53CD\u6620\u3055\u308C\u307E\u3059\u3002"
+  },
+  orderLabel: {
+    en: "Layer order",
+    ja: "\u91CD\u306D\u9806"
+  },
+  orderTexOverArt: {
+    en: "Texture on top (paper grain over art)",
+    ja: "\u30C6\u30AF\u30B9\u30C1\u30E3\u3092\u4E0A\uFF08\u753B\u306B\u7D19\u76EE\u3092\u91CD\u306D\u308B\uFF09"
+  },
+  orderArtOverTex: {
+    en: "Art on top",
+    ja: "\u753B\u3092\u4E0A"
+  },
+  modeLabel: {
+    en: "Blend mode (top layer)",
+    ja: "\u5408\u6210\u30E2\u30FC\u30C9\uFF08\u4E0A\u306E\u5C64\uFF09"
+  },
+  opacityLabel: {
+    en: "Top layer opacity",
+    ja: "\u4E0A\u306E\u5C64\u306E\u4E0D\u900F\u660E\u5EA6"
+  },
+  ignoreBgLabel: {
+    en: "Ignore illustration background (layer 0)",
+    ja: "\u30A4\u30E9\u30B9\u30C8\u306E\u80CC\u666F\u3092\u7121\u8996\u3059\u308B\uFF08layer 0\uFF09"
   },
   shareTitle: {
     en: "Share",
@@ -1918,6 +2155,9 @@ function renderStatus(query) {
   box.appendChild(texture);
 }
 var paintGen = 0;
+var cmp = {
+  ...DEFAULT_CMP
+};
 function showError(message) {
   const box = document.getElementById("stlnError");
   if (!box) return;
@@ -1950,30 +2190,54 @@ function loadImage(svg) {
   });
 }
 var RASTERIZE_FAILED = {
-  en: "Could not render the illustration (invalid parameters or rasterization failure).",
-  ja: "\u30A4\u30E9\u30B9\u30C8\u3092\u63CF\u753B\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\uFF08\u30D1\u30E9\u30E1\u30FC\u30BF\u4E0D\u6B63\u307E\u305F\u306F\u30E9\u30B9\u30BF\u30E9\u30A4\u30BA\u5931\u6557\uFF09\u3002"
+  en: "Could not render the composite (invalid parameters or rasterization failure).",
+  ja: "\u5408\u6210\u3092\u63CF\u753B\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F\uFF08\u30D1\u30E9\u30E1\u30FC\u30BF\u4E0D\u6B63\u307E\u305F\u306F\u30E9\u30B9\u30BF\u30E9\u30A4\u30BA\u5931\u6557\uFF09\u3002"
 };
-async function paintIllustration(query) {
+async function paintComposite(query) {
   const canvas = document.getElementById("stlnCanvas");
   if (!canvas) return;
   const gen = ++paintGen;
+  const settings = {
+    ...cmp
+  };
   hideError();
   if (!stlnParamsPresent(query)) {
     canvas.hidden = true;
     return;
   }
   try {
-    const art = await decodeIllustration(query);
+    const [art, texSvg] = await Promise.all([
+      decodeIllustration(query, {
+        ignoreBg: settings.ignoreBg
+      }),
+      Promise.resolve(decodeTextureToSvg(query))
+    ]);
     if (gen !== paintGen) return;
-    const img = await loadImage(withExplicitSize(art.svg, PREVIEW_SIZE, PREVIEW_SIZE));
+    const [artImg, texImg] = await Promise.all([
+      loadImage(withExplicitSize(art.svg, PREVIEW_SIZE, PREVIEW_SIZE)),
+      loadImage(withExplicitSize(texSvg, PREVIEW_SIZE, PREVIEW_SIZE))
+    ]);
     if (gen !== paintGen) return;
     canvas.width = PREVIEW_SIZE;
     canvas.height = PREVIEW_SIZE;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2d context unavailable");
-    ctx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
-    const { dx, dy, dw, dh } = coverDest(art.width, art.height, PREVIEW_SIZE);
-    ctx.drawImage(img, dx, dy, dw, dh);
+    const artLayer = {
+      img: artImg,
+      width: art.width,
+      height: art.height
+    };
+    const texSize = textureBitmapSize(query);
+    const texLayer = {
+      img: texImg,
+      width: texSize,
+      height: texSize
+    };
+    if (settings.order === "tex-over-art") {
+      paintLayers(ctx, artLayer, texLayer, settings, PREVIEW_SIZE);
+    } else {
+      paintLayers(ctx, texLayer, artLayer, settings, PREVIEW_SIZE);
+    }
     canvas.hidden = false;
   } catch {
     if (gen !== paintGen) return;
@@ -1981,11 +2245,95 @@ async function paintIllustration(query) {
     showError(RASTERIZE_FAILED);
   }
 }
+function textureBitmapSize(query) {
+  const raw = query.get("tex.sv1.viewBox");
+  return (raw !== null ? parseViewBox(raw) : null) ?? DEFAULTS.canvas.size;
+}
+function repaint() {
+  paintComposite(new URLSearchParams(location.search));
+}
+function labeledRow(label) {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+  const labelEl = document.createElement("label");
+  labelEl.textContent = label;
+  wrap.appendChild(labelEl);
+  return {
+    wrap,
+    labelEl
+  };
+}
+function buildCmpControls() {
+  const box = document.getElementById("cmpControls");
+  if (!box) return;
+  box.innerHTML = "";
+  const order = labeledRow(T(UI.orderLabel));
+  const orderSel = document.createElement("select");
+  for (const value of CMP_ORDERS) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value === "tex-over-art" ? T(UI.orderTexOverArt) : T(UI.orderArtOverTex);
+    orderSel.appendChild(opt);
+  }
+  orderSel.value = cmp.order;
+  orderSel.addEventListener("change", () => {
+    cmp.order = orderSel.value === "art-over-tex" ? "art-over-tex" : "tex-over-art";
+    repaint();
+  });
+  order.wrap.appendChild(orderSel);
+  box.appendChild(order.wrap);
+  const mode = labeledRow(T(UI.modeLabel));
+  const modeSel = document.createElement("select");
+  for (const value of CMP_BLENDS) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value;
+    modeSel.appendChild(opt);
+  }
+  modeSel.value = cmp.mode;
+  modeSel.addEventListener("change", () => {
+    cmp.mode = CMP_BLENDS.includes(modeSel.value) ? modeSel.value : DEFAULT_CMP.mode;
+    repaint();
+  });
+  mode.wrap.appendChild(modeSel);
+  box.appendChild(mode.wrap);
+  const opacity = labeledRow(`${T(UI.opacityLabel)} (${cmp.opacity.toFixed(2)})`);
+  const opacityRange = document.createElement("input");
+  opacityRange.type = "range";
+  opacityRange.min = "0";
+  opacityRange.max = "1";
+  opacityRange.step = "0.05";
+  opacityRange.value = String(cmp.opacity);
+  opacityRange.addEventListener("input", () => {
+    const v = Number(opacityRange.value);
+    cmp.opacity = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : DEFAULT_CMP.opacity;
+    opacity.labelEl.textContent = `${T(UI.opacityLabel)} (${cmp.opacity.toFixed(2)})`;
+    repaint();
+  });
+  opacity.wrap.appendChild(opacityRange);
+  box.appendChild(opacity.wrap);
+  const bgWrap = document.createElement("div");
+  bgWrap.className = "field checkline";
+  const bgCheck = document.createElement("input");
+  bgCheck.type = "checkbox";
+  bgCheck.checked = cmp.ignoreBg;
+  bgCheck.addEventListener("change", () => {
+    cmp.ignoreBg = bgCheck.checked;
+    repaint();
+  });
+  const bgLabel = document.createElement("label");
+  bgLabel.textContent = T(UI.ignoreBgLabel);
+  bgWrap.appendChild(bgCheck);
+  bgWrap.appendChild(bgLabel);
+  box.appendChild(bgWrap);
+}
 function init() {
   applyI18n();
   const query = new URLSearchParams(location.search);
+  cmp = parseCmpSettings(query);
   renderStatus(query);
-  paintIllustration(query);
+  buildCmpControls();
+  paintComposite(query);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const next = btn.dataset.lang;
@@ -1993,6 +2341,7 @@ function init() {
         lang = next;
         applyI18n();
         renderStatus(new URLSearchParams(location.search));
+        buildCmpControls();
       }
     });
   });

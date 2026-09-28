@@ -29,13 +29,23 @@ composite keys require an entry in this table’s follow-up ADR
 ## 3. Data flow (`/stln/`)
 
 ```
-URL query
- ├─ bare stln params ─→ stln-codec decodeUrlToSvg({ pathMode: "relativeMerged" })
- │                       → illustration SVG string (+ viewBox)
- ├─ tex.* params ──────→ texture decode (docs/10 §6) → texture SVG string
- └─ cmp.* params ──────→ composite settings (docs/20 §2)
+URL query (three namespaces, one string)
+ ├─ partition by prefix FIRST (upstream throws on unknown keys):
+ │   bare keys → stln part; tex.* → texture part; cmp.* → composite part
+ ├─ stln part ─────────→ stln-codec decodeUrlParams → data
+ │                       (drop linesData[0] iff cmp.ignoreBg, keep sizeData)
+ │                     ─→ stln-codec generateSvg(data, { pathMode }) → illustration SVG
+ ├─ tex.* part ────────→ texture decode (docs/10 §6) → texture SVG string
+ └─ cmp.* part ────────→ composite settings (docs/20 §2)
         │ rasterize both at cmp.w/h/dpr → canvas composite → preview + PNG export
 ```
+
+`stln-codec` is strict: it interprets unknown keys as group payloads and throws.
+Our `tex.`/`cmp.` prefixes (containing a literal `.`, which never occurs in
+upstream key alphabets) make prefix-partitioning sound — the `stlnQuery()`
+helper in `src/stln/composite.ts` is the single choke point and MUST be used for
+every upstream call. Our own decoders stay lenient toward each other's keys
+(pure-page `/` ignores bare/`cmp.*`; texture decode ignores non-`tex.*`).
 
 - `stln-codec` is imported **only** via `deno.jsonc` `imports` and shipped via
   `deno bundle` (no CDN). See `docs/50-deno-workflow.md`.
