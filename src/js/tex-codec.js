@@ -6,7 +6,7 @@
  * malformed values fall back to the defaults below (lenient policy).
  * See docs/10-texture-url-spec.md sections 3-4.
  */
-import { fmt, hexToRgb01 } from "./texture-core.js";
+import { deepClone, DEFAULTS, fmt, hexToRgb01 } from "./texture-core.js";
 
 export const TEX_PREFIX = "tex.";
 
@@ -601,4 +601,222 @@ export function decodeTextureToSvg(params) {
   );
   L(0, `</svg>`);
   return lines.join("\n");
+}
+
+/* ---------- decode-restore: URL params to slider state (best-effort) ----------
+ * Starts from DEFAULTS and applies what the params carry (docs/10 section 6).
+ * Malformed values leave the corresponding slider at its default. tint.mode
+ * is inferred from the cm1.values matrix shape because the URL only stores
+ * the "matrix" family, never the slider family name. Values outside slider
+ * ranges pass through untouched (sliders display-clamp them); no range table
+ * is duplicated here. */
+function approx(a, b, eps = 1e-6) {
+  return Math.abs(a - b) <= eps;
+}
+
+function float01ToHexByte(f) {
+  return Math.round(Math.min(1, Math.max(0, f)) * 255).toString(16).padStart(
+    2,
+    "0",
+  );
+}
+
+function matrix20(params, key) {
+  if (!params.has(key)) return null;
+  const nums = parseNumberList(params.get(key), {
+    minLength: 20,
+    maxLength: 20,
+  });
+  return nums;
+}
+
+function inferTintMode(nums) {
+  // Returns { mode, color, alphaSlope, alphaBias, grainAlpha } with only the
+  // relevant fields set, or null when the shape is unrecognized.
+  if (nums === null) return null;
+  const identity = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0]
+    .every((v, i) => approx(nums[i], v));
+  const alpha = nums.slice(15, 20);
+  const rgbConstant = [0, 1, 2].every((row) =>
+    nums.slice(row * 5, row * 5 + 4).every((v) => approx(v, 0))
+  );
+  const color = `#${float01ToHexByte(nums[4])}${float01ToHexByte(nums[9])}${
+    float01ToHexByte(nums[14])
+  }`;
+  if (
+    identity && approx(alpha[0], 0) && approx(alpha[1], 0) &&
+    approx(alpha[2], 0)
+  ) {
+    return { mode: "alpha", grainAlpha: alpha[3] };
+  }
+  if (!rgbConstant) return null;
+  const [s0, s1, s2, s3, bi] = alpha;
+  if (approx(s1, 0) && approx(s2, 0) && approx(s3, 0)) {
+    return { mode: "stainMottle", color, alphaSlope: s0, alphaBias: bi };
+  }
+  if (approx(s0, s1) && approx(s1, s2) && approx(s3, 0)) {
+    return { mode: "stainSpots", color, alphaSlope: s0, alphaBias: bi };
+  }
+  if (approx(s0, 0) && approx(s1, 0) && approx(s2, 0)) {
+    return { mode: "stainHaze", color, grainAlpha: s3 };
+  }
+  return null;
+}
+
+function singleFloat(params, key) {
+  if (!params.has(key)) return null;
+  const nums = parseNumberList(params.get(key), { minLength: 1, maxLength: 1 });
+  return nums === null ? null : nums[0];
+}
+
+export function decodeTextureToState(params) {
+  const st = deepClone(DEFAULTS);
+  // Absent flag/selector keys mean "stage off" (docs/10 section 4), which for
+  // light differs from the app default: start that stage off.
+  st.light.mode = "none";
+
+  // Stage 1: noise.
+  const type = params.has("tex.tb1.type")
+    ? parseVocab(params.get("tex.tb1.type"), NOISE_TYPES)
+    : null;
+  if (type !== null) st.noise.type = type;
+  if (params.has("tex.tb1.baseFrequency")) {
+    const nums = parseNumberList(params.get("tex.tb1.baseFrequency"), {
+      minLength: 1,
+      maxLength: 2,
+    });
+    if (nums !== null) {
+      st.noise.freqX = nums[0];
+      if (nums.length === 2) {
+        st.noise.freqY = nums[1];
+        st.noise.anisotropic = true;
+      } else {
+        st.noise.freqY = nums[0];
+        st.noise.anisotropic = false;
+      }
+    }
+  }
+  const oct1 = params.has("tex.tb1.numOctaves")
+    ? parseInteger(params.get("tex.tb1.numOctaves"))
+    : null;
+  if (oct1 !== null) st.noise.octaves = oct1;
+  const seed1 = params.has("tex.tb1.seed")
+    ? parseInteger(params.get("tex.tb1.seed"))
+    : null;
+  if (seed1 !== null) st.noise.seed = seed1;
+
+  // Stage 2: weave.
+  const weaveBlend = params.has("tex.w")
+    ? parseVocab(params.get("tex.w"), WEAVE_BLENDS)
+    : null;
+  if (weaveBlend !== null) {
+    st.weave.enabled = true;
+    st.weave.blend = weaveBlend;
+  }
+
+  // Stages 3+7: pulp.
+  if (params.has("tex.p")) {
+    st.pulp.enabled = true;
+    const ff = singleFloat(params, "tex.tb3.baseFrequency");
+    if (ff !== null) st.pulp.fiberFreq = ff;
+    const fo = params.has("tex.tb3.numOctaves")
+      ? parseInteger(params.get("tex.tb3.numOctaves"))
+      : null;
+    if (fo !== null) st.pulp.fiberOctaves = fo;
+    const blur = singleFloat(params, "tex.gb1.stdDeviation");
+    if (blur !== null) st.pulp.blur = blur;
+    const cm2 = matrix20(params, "tex.cm2.values");
+    if (cm2 !== null) st.pulp.fiberAlpha = cm2[18];
+    // NOTE: tex.bl2.mode has no slider (generator hardcodes multiply).
+  }
+
+  // Stage 4: distortion.
+  if (params.has("tex.d")) {
+    st.distort.enabled = true;
+    const freq = singleFloat(params, "tex.tb4.baseFrequency");
+    if (freq !== null) st.distort.freq = freq;
+    const oct = params.has("tex.tb4.numOctaves")
+      ? parseInteger(params.get("tex.tb4.numOctaves"))
+      : null;
+    if (oct !== null) st.distort.octaves = oct;
+    const scale = singleFloat(params, "tex.dm1.scale");
+    if (scale !== null) st.distort.scale = scale;
+  }
+
+  // Stage 5: lighting.
+  const lightSel = params.has("tex.light")
+    ? parseVocab(params.get("tex.light"), LIGHT_SELECTORS)
+    : null;
+  if (lightSel !== null) {
+    const el = lightSel === "diffuse" ? "dl1" : "sl1";
+    st.light.mode = lightSel;
+    const surf = singleFloat(params, `tex.${el}.surfaceScale`);
+    if (surf !== null) st.light.surfaceScale = surf;
+    if (lightSel === "specular") {
+      const exp = singleFloat(params, `tex.${el}.specularExponent`);
+      if (exp !== null) st.light.specExp = exp;
+    }
+    const az = singleFloat(params, `tex.${el}.azimuth`);
+    if (az !== null) st.light.azimuth = az;
+    const elev = singleFloat(params, `tex.${el}.elevation`);
+    if (elev !== null) st.light.elevation = elev;
+    const hex = params.has(`tex.${el}.lighting-color`)
+      ? stripHash(params.get(`tex.${el}.lighting-color`))
+      : null;
+    if (hex !== null) st.light.color = addHash(hex);
+  }
+
+  // Stage 6: tinting.
+  const tintSel = params.has("tex.tint")
+    ? parseVocab(params.get("tex.tint"), TINT_SELECTORS)
+    : null;
+  if (tintSel === "table") {
+    st.tint.mode = "table";
+    if (params.has("tex.ct1.tableValues")) {
+      const nums = parseNumberList(params.get("tex.ct1.tableValues"), {
+        minLength: 1,
+        maxLength: 64,
+      });
+      if (nums !== null && nums.length >= 2) st.tint.levels = nums.length;
+    }
+  } else if (tintSel === "matrix") {
+    const inferred = inferTintMode(matrix20(params, "tex.cm1.values"));
+    if (inferred === null) {
+      st.tint.mode = "stainMottle"; // stage is on; sliders stay default.
+    } else {
+      st.tint.mode = inferred.mode;
+      if (inferred.color !== undefined) st.tint.color = inferred.color;
+      if (inferred.alphaSlope !== undefined) {
+        st.tint.alphaSlope = inferred.alphaSlope;
+      }
+      if (inferred.alphaBias !== undefined) {
+        st.tint.alphaBias = inferred.alphaBias;
+      }
+      if (inferred.grainAlpha !== undefined) {
+        st.tint.grainAlpha = inferred.grainAlpha;
+      }
+    }
+  }
+
+  // Stage 8 + backing + canvas.
+  const blend3 = params.has("tex.bl3.mode")
+    ? parseVocab(params.get("tex.bl3.mode"), COMPOSITE_BLENDS)
+    : null;
+  if (blend3 !== null) st.composite.blend = blend3;
+  const rc1 = params.has("tex.rc1.fill")
+    ? stripHash(params.get("tex.rc1.fill"))
+    : null;
+  if (rc1 !== null) st.base.fillColor = addHash(rc1);
+  const rc2 = params.has("tex.rc2.fill")
+    ? stripHash(params.get("tex.rc2.fill"))
+    : null;
+  if (rc2 !== null) st.base.highlightColor = addHash(rc2);
+  const opacity = singleFloat(params, "tex.rc2.opacity");
+  if (opacity !== null) st.composite.finalOpacity = opacity;
+  if (params.has("tex.sv1.viewBox")) {
+    const size = parseViewBox(params.get("tex.sv1.viewBox"));
+    if (size !== null) st.canvas.size = size;
+  }
+
+  return st;
 }
