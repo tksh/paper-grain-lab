@@ -58,28 +58,28 @@ for the composite page, `test: …` only when a commit adds tests alone,
 
 ## Milestone C — `/stln/` composite lab (needs A0–A4)
 
-- [ ] **C1 — `feat(stln): add bundled entry and replace placeholder page`.**
+- [x] **C1 — `feat(stln): add bundled entry and replace placeholder page`.**
       `src/stln/main.ts` importing `@tksh/stln-codec` via `deno.jsonc`
       `imports`; `deno task bundle:stln` wiring; `src/stln/index.html` loads the
       bundle instead of the placeholder (`docs/50` §2, `docs/30` §3). No CDN.
-- [ ] **C2 — `feat(stln): illustration decode and rasterization`.**
+- [x] **C2 — `feat(stln): illustration decode and rasterization`.**
       `decodeUrlToSvg` with `pathMode: "relativeMerged"`; explicit
       `width`/`height` at bitmap size; Blob-URL + generation-counter async
       protocol with cleanup (`docs/20-composite-spec.md` §3).
-- [ ] **C3 — `feat(stln): canvas composite with order/mode/opacity/ignoreBg`.**
+- [x] **C3 — `feat(stln): canvas composite with order/mode/opacity/ignoreBg`.**
       Result `<canvas>` element (separate from the texture preview);
       `cmp.order`/`cmp.mode` (allowlist)/`cmp.opacity`/`cmp.ignoreBg` per
       `docs/20` §1–§2. Defaults: texture-over-art, `multiply`, both backgrounds
       kept.
-- [ ] **C4 — `feat(stln): raster size controls and PNG export`.**
+- [x] **C4 — `feat(stln): raster size controls and PNG export`.**
       `cmp.w`/`cmp.h`/`cmp.dpr` → bitmap `round(w×dpr)` × `round(h×dpr)`;
       preview reuses the bitmap CSS-scaled; PNG export via `toBlob` (`docs/20`
       §3–§4). Export size reproducible from URL alone.
-- [ ] **C5 — `feat(stln): combined share-link and error pane`.** Canonical key
+- [x] **C5 — `feat(stln): combined share-link and error pane`.** Canonical key
       order (stln, then `tex.*` slot order, then `cmp.*`) per `docs/30` §5;
       strict `stln` errors surface a readable pane and render nothing partial
       (`docs/30` §4).
-- [ ] **C6 — `test(stln): composite round-trip and fallback matrix`.** Omission
+- [x] **C6 — `test(stln): composite round-trip and fallback matrix`.** Omission
       equivalence for `tex.*`/`cmp.*`, blend allowlist fallback, malformed-`cmp`
       defaults, namespace reservation (bare keys untouched).
 
