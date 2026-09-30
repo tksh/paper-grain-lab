@@ -284,12 +284,15 @@ export function texQuery(query: URLSearchParams): URLSearchParams {
 }
 
 /** Combined share query: bare (stln) keys verbatim in original order, then
- * tex.* verbatim, then freshly encoded cmp.* (docs/30 section 5 canonical
- * order). Only cmp.* is regenerated — texture and illustration parts pass
- * through untouched so unknown keys survive sharing. */
+ * tex.*, then freshly encoded cmp.* (docs/30 section 5 canonical order).
+ * The tex.* part defaults to passing the current query through verbatim;
+ * callers with live-editable texture state pass freshly encoded params so
+ * the link reproduces on-screen edits (unknown keys are then normalized
+ * away — documented, not silent). */
 export function buildShareQuery(
   current: URLSearchParams,
   cmpParams: URLSearchParams,
+  texOverride?: URLSearchParams,
 ): URLSearchParams {
   const out = new URLSearchParams();
   for (const [key, value] of current) {
@@ -297,7 +300,9 @@ export function buildShareQuery(
       out.append(key, value);
     }
   }
-  for (const [key, value] of texQuery(current)) out.append(key, value);
+  for (const [key, value] of (texOverride ?? texQuery(current))) {
+    out.append(key, value);
+  }
   for (const [key, value] of cmpParams) out.append(key, value);
   return out;
 }

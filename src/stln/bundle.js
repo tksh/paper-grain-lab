@@ -17,8 +17,28 @@ function hexToRgb01(hex) {
     b: (num & 255) / 255
   };
 }
+function getPath(obj, path) {
+  return path.split(".").reduce((o, k) => o[k], obj);
+}
+function setPath(obj, path, val) {
+  const keys = path.split(".");
+  let o = obj;
+  for (let i = 0; i < keys.length - 1; i++) o = o[keys[i]];
+  o[keys[keys.length - 1]] = val;
+}
 function deepClone(o) {
   return JSON.parse(JSON.stringify(o));
+}
+function deepMerge(target, src) {
+  for (const k in src) {
+    if (src[k] && typeof src[k] === "object" && !Array.isArray(src[k])) {
+      if (!target[k]) target[k] = {};
+      deepMerge(target[k], src[k]);
+    } else {
+      target[k] = src[k];
+    }
+  }
+  return target;
 }
 var DEFAULTS = {
   noise: {
@@ -152,35 +172,36 @@ function generateSVG(st) {
   L(0, `</svg>`);
   return lines.join("\n");
 }
+var ELEMENT_COLORS = {
+  "feTurbulence": "#cfe8da",
+  "feBlend": "#e3d6f0",
+  "feGaussianBlur": "#f3ddbc",
+  "feDisplacementMap": "#f2d1cf",
+  "feDiffuseLighting/feSpecularLighting": "#cfe0f2",
+  "feSpecularLighting": "#c9eeee",
+  "feDistantLight": "#eee6c2",
+  "feColorMatrix": "#f0d6e6",
+  "feComponentTransfer": "#d8d8f2",
+  "feFuncR/feFuncG/feFuncB": "#ecdcc0",
+  "rect": "#e2e2e2",
+  "svg": "#dfe1e6"
+};
+var TOKEN_ORDER = [
+  "feTurbulence",
+  "feBlend",
+  "feGaussianBlur",
+  "feDisplacementMap",
+  "feDiffuseLighting/feSpecularLighting",
+  "feDistantLight",
+  "feSpecularLighting",
+  "feColorMatrix",
+  "feComponentTransfer",
+  "feFuncR/feFuncG/feFuncB",
+  "rect",
+  "svg"
+];
 
 // src/js/tex-codec.js
-var TEX_DEFAULTS = {
-  "tex.tb1.type": "fractalNoise",
-  "tex.tb1.baseFrequency": "0.05",
-  "tex.tb1.numOctaves": "3",
-  "tex.tb1.seed": "2",
-  "tex.tb3.baseFrequency": "0.08",
-  "tex.tb3.numOctaves": "2",
-  "tex.gb1.stdDeviation": "1.5",
-  "tex.tb4.baseFrequency": "0.01",
-  "tex.tb4.numOctaves": "2",
-  "tex.dm1.scale": "20",
-  "tex.dl1.surfaceScale": "2",
-  "tex.dl1.azimuth": "60",
-  "tex.dl1.elevation": "55",
-  "tex.dl1.lighting-color": "ffffff",
-  "tex.sl1.surfaceScale": "2",
-  "tex.sl1.specularExponent": "12",
-  "tex.sl1.azimuth": "60",
-  "tex.sl1.elevation": "55",
-  "tex.sl1.lighting-color": "ffffff",
-  "tex.bl2.mode": "multiply",
-  "tex.bl3.mode": "multiply",
-  "tex.rc1.fill": "f6f3eb",
-  "tex.rc2.fill": "faf8f4",
-  "tex.rc2.opacity": "0.9",
-  "tex.sv1.viewBox": "0,0,300,300"
-};
 var NOISE_TYPES = [
   "fractalNoise",
   "turbulence"
@@ -209,7 +230,7 @@ var TINT_SELECTORS = [
 ];
 function parseNumberList(raw, { minLength = 1, maxLength = 64 } = {}) {
   if (typeof raw !== "string") return null;
-  const parts = raw.split(",").map((s) => s.trim());
+  const parts = raw.split("_");
   if (parts.length < minLength || parts.length > maxLength) return null;
   const nums = parts.map((s) => s === "" ? NaN : Number(s));
   if (nums.some((n) => !Number.isFinite(n))) return null;
@@ -229,7 +250,7 @@ function addHash(hexNoHash) {
 }
 function parseViewBox(raw) {
   if (typeof raw !== "string") return null;
-  const m = raw.trim().match(/^0,0,(\d+),(\d+)$/);
+  const m = raw.trim().match(/^0_0_(\d+)_(\d+)$/);
   if (!m || m[1] !== m[2]) return null;
   const size = Number(m[1]);
   if (!Number.isInteger(size) || size <= 0) return null;
@@ -243,114 +264,6 @@ function parseInteger(raw) {
 }
 function parseVocab(raw, list) {
   return typeof raw === "string" && list.includes(raw) ? raw : null;
-}
-function rawList(params, key) {
-  const raw = params.get(key);
-  if (typeof raw !== "string") return null;
-  const parts = raw.split(/[\s,]+/).filter((s) => s !== "");
-  if (parts.length === 0) return null;
-  if (parts.some((s) => !Number.isFinite(Number(s)))) return null;
-  return parts.join(" ");
-}
-function singleNumber(params, key, fallbackKey) {
-  const list = rawList(params, key);
-  if (list !== null && !list.includes(" ")) return list;
-  return TEX_DEFAULTS[fallbackKey];
-}
-function matrixOrZeros(params, key) {
-  const list = rawList(params, key);
-  const nums = list !== null && list.split(" ").length === 20 ? list.split(" ") : new Array(20).fill("0");
-  return [
-    0,
-    1,
-    2,
-    3
-  ].map((r) => nums.slice(r * 5, r * 5 + 5).join(" ")).join("  ");
-}
-function tableOrDefault(params, key) {
-  const list = rawList(params, key);
-  if (list !== null) return list;
-  return "0 1";
-}
-function colorOrDefault(params, key, fallbackKey) {
-  const hex = params.has(key) ? stripHash(params.get(key)) : null;
-  return `#${hex ?? TEX_DEFAULTS[fallbackKey]}`;
-}
-function intOrDefault(params, key, fallbackKey) {
-  const n = params.has(key) ? parseInteger(params.get(key)) : null;
-  return n ?? TEX_DEFAULTS[fallbackKey];
-}
-function decodeTextureToSvg(params) {
-  const lines = [];
-  const L = (ind, s) => lines.push("  ".repeat(ind) + s);
-  const size = params.has("tex.sv1.viewBox") ? parseViewBox(params.get("tex.sv1.viewBox")) ?? 300 : Number(TEX_DEFAULTS["tex.sv1.viewBox"].split(",")[2]);
-  L(0, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="100%" height="100%">`);
-  L(1, `<defs>`);
-  L(2, `<filter id="fp-filter" x="-20%" y="-20%" width="140%" height="140%">`);
-  let cur = "noise1";
-  const type1 = parseVocab(params.get("tex.tb1.type"), NOISE_TYPES) ?? TEX_DEFAULTS["tex.tb1.type"];
-  const freqParts = (rawList(params, "tex.tb1.baseFrequency") ?? TEX_DEFAULTS["tex.tb1.baseFrequency"]).split(" ");
-  const freqA = freqParts.length <= 2 ? freqParts.join(" ") : TEX_DEFAULTS["tex.tb1.baseFrequency"];
-  const oct1 = intOrDefault(params, "tex.tb1.numOctaves", "tex.tb1.numOctaves");
-  const seed1 = intOrDefault(params, "tex.tb1.seed", "tex.tb1.seed");
-  L(3, `<feTurbulence type="${type1}" baseFrequency="${freqA}" numOctaves="${oct1}" seed="${seed1}" result="noise1"/>`);
-  const weaveBlend = params.has("tex.w") ? parseVocab(params.get("tex.w"), WEAVE_BLENDS) : null;
-  if (weaveBlend !== null) {
-    const freqB = freqParts.length === 2 ? `${freqParts[1]} ${freqParts[0]}` : freqA;
-    L(3, `<feTurbulence type="${type1}" baseFrequency="${freqB}" numOctaves="${oct1}" seed="${Number(seed1) + 1}" result="noise2"/>`);
-    L(3, `<feBlend in="noise1" in2="noise2" mode="${weaveBlend}" result="noiseWeave"/>`);
-    cur = "noiseWeave";
-  }
-  if (params.has("tex.p")) {
-    L(3, `<feTurbulence type="fractalNoise" baseFrequency="${singleNumber(params, "tex.tb3.baseFrequency", "tex.tb3.baseFrequency")}" numOctaves="${intOrDefault(params, "tex.tb3.numOctaves", "tex.tb3.numOctaves")}" seed="${Number(seed1) + 2}" result="fiberRaw"/>`);
-    L(3, `<feGaussianBlur in="fiberRaw" stdDeviation="${singleNumber(params, "tex.gb1.stdDeviation", "tex.gb1.stdDeviation")}" result="fiberSoft"/>`);
-  }
-  if (params.has("tex.d")) {
-    L(3, `<feTurbulence type="turbulence" baseFrequency="${singleNumber(params, "tex.tb4.baseFrequency", "tex.tb4.baseFrequency")}" numOctaves="${intOrDefault(params, "tex.tb4.numOctaves", "tex.tb4.numOctaves")}" seed="${Number(seed1) + 3}" result="dispMap"/>`);
-    L(3, `<feDisplacementMap in="${cur}" in2="dispMap" scale="${singleNumber(params, "tex.dm1.scale", "tex.dm1.scale")}" xChannelSelector="R" yChannelSelector="G" result="noiseWarp"/>`);
-    cur = "noiseWarp";
-  }
-  const lightSel = params.has("tex.light") ? parseVocab(params.get("tex.light"), LIGHT_SELECTORS) : null;
-  if (lightSel === "diffuse" || lightSel === "specular") {
-    const el = lightSel === "diffuse" ? "dl1" : "sl1";
-    const tag = lightSel === "diffuse" ? "feDiffuseLighting" : "feSpecularLighting";
-    const color = colorOrDefault(params, `tex.${el}.lighting-color`, `tex.${el}.lighting-color`);
-    const surf = singleNumber(params, `tex.${el}.surfaceScale`, `tex.${el}.surfaceScale`);
-    const az = intOrDefault(params, `tex.${el}.azimuth`, `tex.${el}.azimuth`);
-    const el2 = intOrDefault(params, `tex.${el}.elevation`, `tex.${el}.elevation`);
-    const open = lightSel === "diffuse" ? `<${tag} in="${cur}" lighting-color="${color}" diffuseConstant="1" surfaceScale="${surf}" result="lit">` : `<${tag} in="${cur}" lighting-color="${color}" specularConstant="1" specularExponent="${singleNumber(params, `tex.${el}.specularExponent`, `tex.${el}.specularExponent`)}" surfaceScale="${surf}" result="lit">`;
-    L(3, open);
-    L(4, `<feDistantLight azimuth="${az}" elevation="${el2}"/>`);
-    L(3, `</${tag}>`);
-    cur = "lit";
-  }
-  const tintSel = params.has("tex.tint") ? parseVocab(params.get("tex.tint"), TINT_SELECTORS) : null;
-  if (tintSel === "matrix") {
-    L(3, `<feColorMatrix in="${cur}" type="matrix" values="${matrixOrZeros(params, "tex.cm1.values")}" result="colored"/>`);
-    cur = "colored";
-  } else if (tintSel === "table") {
-    L(3, `<feComponentTransfer in="${cur}" result="colored">`);
-    const table = tableOrDefault(params, "tex.ct1.tableValues");
-    L(4, `<feFuncR type="table" tableValues="${table}"/>`);
-    L(4, `<feFuncG type="table" tableValues="${table}"/>`);
-    L(4, `<feFuncB type="table" tableValues="${table}"/>`);
-    L(3, `</feComponentTransfer>`);
-    cur = "colored";
-  }
-  if (params.has("tex.p")) {
-    L(3, `<feColorMatrix in="fiberSoft" type="matrix" values="${matrixOrZeros(params, "tex.cm2.values")}" result="fiberMask"/>`);
-    L(3, `<feBlend in="${cur}" in2="fiberMask" mode="multiply" result="coloredFiber"/>`);
-    cur = "coloredFiber";
-  }
-  const blend3 = parseVocab(params.get("tex.bl3.mode"), COMPOSITE_BLENDS) ?? TEX_DEFAULTS["tex.bl3.mode"];
-  L(3, `<feBlend in="SourceGraphic" in2="${cur}" mode="${blend3}"/>`);
-  L(2, `</filter>`);
-  L(1, `</defs>`);
-  L(1, `<rect width="100%" height="100%" fill="${colorOrDefault(params, "tex.rc1.fill", "tex.rc1.fill")}"/>`);
-  const opacity = singleNumber(params, "tex.rc2.opacity", "tex.rc2.opacity");
-  L(1, `<rect width="100%" height="100%" fill="${colorOrDefault(params, "tex.rc2.fill", "tex.rc2.fill")}" filter="url(#fp-filter)" opacity="${opacity}"/>`);
-  L(0, `</svg>`);
-  return lines.join("\n");
 }
 function approx(a, b, eps = 1e-6) {
   return Math.abs(a - b) <= eps;
@@ -541,6 +454,1845 @@ function decodeTextureToState(params) {
     if (size !== null) st.canvas.size = size;
   }
   return st;
+}
+
+// src/js/texture-data.js
+var PRESETS = [
+  {
+    key: "canson",
+    label: {
+      ja: "1. \u30E9\u30D5\u30B0\u30EC\u30A4\u30F3",
+      en: "1. Rough Grain"
+    },
+    sub: {
+      ja: "Canson / \u57FA\u672C\u306E\u7D19\u76EE\uFF08\u62E1\u6563\u53CD\u5C04\u306E\u307F\uFF09",
+      en: "Canson / basic paper grain (diffuse lighting only)"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.05,
+        freqY: 0.05,
+        anisotropic: false,
+        octaves: 3,
+        seed: 2
+      },
+      light: {
+        mode: "diffuse",
+        surfaceScale: 2,
+        azimuth: 60,
+        elevation: 50,
+        color: "#ffffff"
+      },
+      tint: {
+        mode: "none"
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.95
+      },
+      base: {
+        fillColor: "#f6f3eb",
+        highlightColor: "#faf8f4"
+      }
+    }
+  },
+  {
+    key: "watercolor",
+    label: {
+      ja: "2. \u30E2\u30C3\u30C8\u30EB\u30C9\u30FB\u30A6\u30A9\u30C3\u30B7\u30E5",
+      en: "2. Mottled Wash"
+    },
+    sub: {
+      ja: "Watercolor / \u4F4E\u5468\u6CE2\u30CE\u30A4\u30BA\uFF0B\u5F37\u3044\u51F9\u51F8",
+      en: "Watercolor / low-frequency noise + strong relief"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.03,
+        freqY: 0.03,
+        anisotropic: false,
+        octaves: 4,
+        seed: 11
+      },
+      light: {
+        mode: "diffuse",
+        surfaceScale: 3.5,
+        azimuth: 120,
+        elevation: 40,
+        color: "#ffffff"
+      },
+      tint: {
+        mode: "none"
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.85
+      },
+      base: {
+        fillColor: "#fcfaf2",
+        highlightColor: "#f6f3e8"
+      }
+    }
+  },
+  {
+    key: "tinted",
+    label: {
+      ja: "3. \u7740\u8272\u30B9\u30C6\u30A4\u30F3",
+      en: "3. Tinted Stain"
+    },
+    sub: {
+      ja: "Kraft / \u9023\u7D9A\u30E0\u30E9\u67D3\u307F\uFF08\u30E9\u30A4\u30C6\u30A3\u30F3\u30B0\u7121\u3057\u30FB\u5358\u4E00\u30C1\u30E3\u30F3\u30CD\u30EB\u306E\u6ED1\u3089\u304B\u306A\u6FC3\u6DE1\uFF09",
+      en: "Kraft / continuous mottled stain (no lighting \u2014 smooth single-channel shading)"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.02,
+        freqY: 0.02,
+        anisotropic: false,
+        octaves: 4,
+        seed: 7
+      },
+      light: {
+        mode: "none"
+      },
+      tint: {
+        mode: "stainMottle",
+        color: "#594026",
+        alphaSlope: 1,
+        alphaBias: 0
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.4
+      },
+      base: {
+        fillColor: "#bc9c74",
+        highlightColor: "#c9ab85"
+      }
+    }
+  },
+  {
+    key: "velvet",
+    label: {
+      ja: "4. \u30CA\u30C3\u30D7\uFF08\u8D77\u6BDB\uFF09",
+      en: "4. Napped Pile"
+    },
+    sub: {
+      ja: "Velvet / Suede / \u5FAE\u7D30\u30CE\u30A4\u30BA\uFF0B\u4F4E\u3044\u51F9\u51F8",
+      en: "Velvet / Suede / fine noise + shallow relief"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.45,
+        freqY: 0.45,
+        anisotropic: false,
+        octaves: 2,
+        seed: 10
+      },
+      light: {
+        mode: "diffuse",
+        surfaceScale: 0.4,
+        azimuth: 90,
+        elevation: 75,
+        color: "#ffffff"
+      },
+      tint: {
+        mode: "none"
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.9
+      },
+      base: {
+        fillColor: "#e5e0d8",
+        highlightColor: "#e8e4dc"
+      }
+    }
+  },
+  {
+    key: "glossy",
+    label: {
+      ja: "5. \u5149\u6CA2\uFF0F\u30D5\u30ED\u30B9\u30C8",
+      en: "5. Gloss / Frost"
+    },
+    sub: {
+      ja: "Tracing / Glassine / \u93E1\u9762\u53CD\u5C04\uFF0Bscreen\u5408\u6210",
+      en: "Tracing / Glassine / specular lighting + screen blend"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.015,
+        freqY: 0.015,
+        anisotropic: false,
+        octaves: 3,
+        seed: 17
+      },
+      light: {
+        mode: "specular",
+        surfaceScale: 0.8,
+        azimuth: 225,
+        elevation: 65,
+        specExp: 20,
+        color: "#ffffff"
+      },
+      tint: {
+        mode: "none"
+      },
+      composite: {
+        blend: "screen",
+        finalOpacity: 0.6
+      },
+      base: {
+        fillColor: "#f1f3f5",
+        highlightColor: "#f8fafc"
+      }
+    }
+  },
+  {
+    key: "woven",
+    label: {
+      ja: "6. \u7E54\u308A\u76EE\u7E4A\u7DAD",
+      en: "6. Woven Fiber"
+    },
+    sub: {
+      ja: "Linen / Canvas / \u76F4\u4EA4\u30CE\u30A4\u30BA\u306E\u91CD\u306D\u5408\u308F\u305B",
+      en: "Linen / Canvas / crossed-noise overlay"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.05,
+        freqY: 0.95,
+        anisotropic: true,
+        octaves: 2,
+        seed: 4
+      },
+      weave: {
+        enabled: true,
+        blend: "multiply"
+      },
+      light: {
+        mode: "diffuse",
+        surfaceScale: 1,
+        azimuth: 45,
+        elevation: 65,
+        color: "#ffffff"
+      },
+      tint: {
+        mode: "none"
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.9
+      },
+      base: {
+        fillColor: "#f9f6f0",
+        highlightColor: "#f9f6f0"
+      }
+    }
+  },
+  {
+    key: "pulp",
+    label: {
+      ja: "7. \u91CD\u5C64\u30D1\u30EB\u30D7\u7E4A\u7DAD",
+      en: "7. Layered Pulp Fiber"
+    },
+    sub: {
+      ja: "Rice / Hemp / \u5FAE\u7C92\u30CE\u30A4\u30BA\uFF0B\u307C\u304B\u3057\u7E4A\u7DAD\u5C64\uFF08\u30E9\u30A4\u30C6\u30A3\u30F3\u30B0\u7121\u3057\u30FB\u6DE1\u3044\u30A2\u30EB\u30D5\u30A1\u6FC3\u6DE1\u3092\u4E8C\u91CD\u306B\u91CD\u306D\u308B\uFF09",
+      en: "Rice / Hemp / fine grain noise + blurred fiber layer (no lighting \u2014 two faint alpha-mask layers stacked)"
+    },
+    state: {
+      noise: {
+        type: "fractalNoise",
+        freqX: 0.4,
+        freqY: 0.4,
+        anisotropic: false,
+        octaves: 3,
+        seed: 18
+      },
+      pulp: {
+        enabled: true,
+        fiberFreq: 0.08,
+        fiberOctaves: 2,
+        blur: 1.5,
+        fiberAlpha: 0.25
+      },
+      light: {
+        mode: "none"
+      },
+      tint: {
+        mode: "alpha",
+        grainAlpha: 0.15
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 1
+      },
+      base: {
+        fillColor: "#f2e9dc",
+        highlightColor: "#f2e9dc"
+      }
+    }
+  }
+];
+var ORIGINALS = [
+  {
+    no: "01",
+    label: {
+      ja: "\u30AD\u30E3\u30F3\u30BD\u30F3\u7D19",
+      en: "Canson Paper"
+    },
+    base: "canson",
+    state: {}
+  },
+  {
+    no: "02",
+    label: {
+      ja: "\u30B3\u30C3\u30C8\u30F3\u30E9\u30B0\u7D19",
+      en: "Cotton Rag Paper"
+    },
+    base: "canson",
+    state: {
+      noise: {
+        freqX: 0.08,
+        freqY: 0.08,
+        octaves: 4,
+        seed: 20
+      },
+      light: {
+        surfaceScale: 0.9,
+        azimuth: 240,
+        elevation: 60
+      },
+      composite: {
+        finalOpacity: 0.9
+      },
+      base: {
+        fillColor: "#faf9f5",
+        highlightColor: "#fefdfa"
+      }
+    }
+  },
+  {
+    no: "03",
+    label: {
+      ja: "\u5438\u6C34\u30A6\u30A9\u30FC\u30BF\u30FC\u30AB\u30E9\u30FC\u7D19",
+      en: "Absorbent Watercolor Paper"
+    },
+    base: "watercolor",
+    state: {}
+  },
+  {
+    no: "04",
+    label: {
+      ja: "\u30AF\u30E9\u30D5\u30C8\u7D19",
+      en: "Kraft Paper"
+    },
+    base: "tinted",
+    state: {}
+  },
+  {
+    no: "05",
+    label: {
+      ja: "\u518D\u751F\u65B0\u805E\u7D19",
+      en: "Recycled Newsprint"
+    },
+    base: "tinted",
+    state: {
+      noise: {
+        freqX: 0.18,
+        freqY: 0.18,
+        octaves: 2,
+        seed: 5
+      },
+      light: {
+        mode: "none"
+      },
+      tint: {
+        mode: "stainHaze",
+        color: "#1a1a1a",
+        grainAlpha: 0.12
+      },
+      composite: {
+        finalOpacity: 1
+      },
+      base: {
+        fillColor: "#dcdad4",
+        highlightColor: "#e2e0da"
+      }
+    }
+  },
+  {
+    no: "06",
+    label: {
+      ja: "\u30DE\u30C3\u30C8\u30D9\u30EB\u30D9\u30C3\u30C8\u7D19",
+      en: "Matte Velvet Paper"
+    },
+    base: "velvet",
+    state: {}
+  },
+  {
+    no: "07",
+    label: {
+      ja: "\u30D4\u30FC\u30C1\u30B9\u30A8\u30FC\u30C9\u7D19",
+      en: "Peach Suede Paper"
+    },
+    base: "velvet",
+    state: {
+      noise: {
+        freqX: 0.5,
+        freqY: 0.5,
+        octaves: 3,
+        seed: 40
+      },
+      light: {
+        surfaceScale: 0.3,
+        azimuth: 180,
+        elevation: 80
+      },
+      base: {
+        fillColor: "#dcc8b0",
+        highlightColor: "#e3cfb9"
+      }
+    }
+  },
+  {
+    no: "08",
+    label: {
+      ja: "\u874B\u5F15\u304D\u30D1\u30FC\u30C1\u30E1\u30F3\u30C8\u7D19",
+      en: "Waxy Parchment Paper"
+    },
+    base: "glossy",
+    state: {
+      noise: {
+        freqX: 0.02,
+        freqY: 0.02,
+        octaves: 3,
+        seed: 31
+      },
+      light: {
+        surfaceScale: 0.8,
+        specExp: 18,
+        azimuth: 225,
+        elevation: 65
+      },
+      composite: {
+        finalOpacity: 0.45
+      },
+      base: {
+        fillColor: "#ebdcb2",
+        highlightColor: "#f2e9cb"
+      }
+    }
+  },
+  {
+    no: "09",
+    label: {
+      ja: "\u30D5\u30ED\u30B9\u30C6\u30C3\u30C9\u30FB\u30C8\u30EC\u30FC\u30B7\u30F3\u30B0\u30DA\u30FC\u30D1\u30FC",
+      en: "Frosted Tracing Paper"
+    },
+    base: "glossy",
+    state: {
+      noise: {
+        freqX: 0.3,
+        freqY: 0.3,
+        octaves: 3,
+        seed: 13
+      },
+      light: {
+        surfaceScale: 0.5,
+        specExp: 40,
+        azimuth: 135,
+        elevation: 80
+      },
+      composite: {
+        finalOpacity: 0.5
+      },
+      base: {
+        fillColor: "#eef2f6",
+        highlightColor: "#ffffff"
+      }
+    }
+  },
+  {
+    no: "10",
+    label: {
+      ja: "\u30D5\u30EC\u30FC\u30AF\u7C73\u7D19",
+      en: "Flaky Rice Paper"
+    },
+    base: "pulp",
+    state: {}
+  },
+  {
+    no: "11",
+    label: {
+      ja: "\u548C\u7D19",
+      en: "Artisan Japanese Washi"
+    },
+    base: "woven",
+    state: {
+      noise: {
+        freqX: 0.015,
+        freqY: 5e-3,
+        anisotropic: true,
+        octaves: 4,
+        seed: 11
+      },
+      weave: {
+        enabled: true,
+        blend: "screen"
+      },
+      light: {
+        mode: "none"
+      },
+      tint: {
+        mode: "stainSpots",
+        color: "#4d4733",
+        alphaSlope: 1,
+        alphaBias: -1.3
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.85
+      },
+      base: {
+        fillColor: "#f3efe3",
+        highlightColor: "#faf6ec"
+      }
+    }
+  },
+  {
+    no: "12",
+    label: {
+      ja: "\u6A39\u76AE\u7D19",
+      en: "Bark Paper"
+    },
+    base: "tinted",
+    state: {
+      noise: {
+        freqX: 0.6,
+        freqY: 0.4,
+        anisotropic: true,
+        octaves: 3,
+        seed: 26
+      },
+      light: {
+        mode: "none"
+      },
+      tint: {
+        mode: "stainSpots",
+        color: "#332619",
+        alphaSlope: 1,
+        alphaBias: -1.1
+      },
+      distort: {
+        enabled: true,
+        freq: 0.08,
+        octaves: 1,
+        scale: 25
+      },
+      composite: {
+        blend: "multiply",
+        finalOpacity: 0.75
+      },
+      base: {
+        fillColor: "#d1be9d",
+        highlightColor: "#dccab0"
+      }
+    }
+  }
+];
+var SECTIONS = [
+  {
+    key: "noise",
+    title: {
+      ja: "1. \u30CE\u30A4\u30BA\u751F\u6210",
+      en: "1. Noise Generation"
+    },
+    desc: {
+      ja: "\u7D19\u306E\u7E4A\u7DAD\u69CB\u9020\u306E\u3082\u3068\u306B\u306A\u308B\u30E9\u30F3\u30C0\u30E0\u30D1\u30BF\u30FC\u30F3\u3002\u3059\u3079\u3066\u306E\u30D7\u30EA\u30BB\u30C3\u30C8\u306E\u571F\u53F0\u3002\u3053\u306E\u30AB\u30C6\u30B4\u30EA\u306F feTurbulence \u5358\u4F53\u3092\u4F7F\u3044\u307E\u3059\u3002",
+      en: "The random pattern underlying the paper's fiber structure \u2014 the foundation of every preset. This category uses feTurbulence alone."
+    },
+    fields: [
+      {
+        bind: "noise.type",
+        label: {
+          ja: "\u30CE\u30A4\u30BA\u7A2E\u5225",
+          en: "Noise type"
+        },
+        type: "select",
+        options: [
+          [
+            "fractalNoise",
+            {
+              ja: "fractalNoise\uFF08\u67D4\u3089\u304B\u3044\uFF09",
+              en: "fractalNoise (soft)"
+            }
+          ],
+          [
+            "turbulence",
+            {
+              ja: "turbulence\uFF08\u786C\u3044\uFF09",
+              en: "turbulence (harsh)"
+            }
+          ]
+        ],
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "type"
+        }
+      },
+      {
+        bind: "noise.freqX",
+        label: {
+          ja: "\u5468\u6CE2\u6570 X",
+          en: "Frequency X"
+        },
+        type: "range",
+        min: 2e-3,
+        max: 0.9,
+        step: 1e-3,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "baseFrequency"
+        }
+      },
+      {
+        bind: "noise.anisotropic",
+        label: {
+          ja: "X/Y\u306E\u5468\u6CE2\u6570\u3092\u72EC\u7ACB\u3055\u305B\u308B\uFF08\u65B9\u5411\u6027\uFF09",
+          en: "Make X/Y frequency independent (directionality)"
+        },
+        type: "checkbox"
+      },
+      {
+        bind: "noise.freqY",
+        label: {
+          ja: "\u5468\u6CE2\u6570 Y",
+          en: "Frequency Y"
+        },
+        type: "range",
+        min: 2e-3,
+        max: 0.9,
+        step: 1e-3,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "baseFrequency"
+        }
+      },
+      {
+        bind: "noise.octaves",
+        label: {
+          ja: "\u30AA\u30AF\u30BF\u30FC\u30D6\u6570",
+          en: "Octaves"
+        },
+        type: "range",
+        min: 1,
+        max: 8,
+        step: 1,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "numOctaves"
+        }
+      },
+      {
+        bind: "noise.seed",
+        label: {
+          ja: "\u30B7\u30FC\u30C9",
+          en: "Seed"
+        },
+        type: "range",
+        min: 0,
+        max: 100,
+        step: 1,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "seed"
+        }
+      }
+    ]
+  },
+  {
+    key: "weave",
+    title: {
+      ja: "2. \u7E54\u308A\u76EE\u30D6\u30EC\u30F3\u30C9",
+      en: "2. Weave Blend"
+    },
+    desc: {
+      ja: "\u76F4\u4EA4\u3059\u308B2\u3064\u306E\u30CE\u30A4\u30BA\u3092\u91CD\u306D\u3066\u5E03\u76EE\u30FB\u30EA\u30CD\u30F3\u8ABF\u306E\u65B9\u5411\u6027\u3092\u4F5C\u308B\uFF08\u53C2\u8003[1]\u306E p-lin / p-canevas \u3068\u540C\u7CFB\u7D71\u306E\u624B\u6CD5\uFF09\u3002feTurbulence \u3068 feBlend \u306E2\u8981\u7D20\u3092\u4F7F\u3044\u307E\u3059\u304C\u30012\u672C\u76EE\u306E feTurbulence \u306F\u300C1. \u30CE\u30A4\u30BA\u751F\u6210\u300D\u306E\u5468\u6CE2\u6570X/Y\u3092\u5165\u308C\u66FF\u3048\u305F\u5024\u30FB\u540C\u3058\u30AA\u30AF\u30BF\u30FC\u30D6\u6570\u3092\u81EA\u52D5\u7684\u306B\u518D\u5229\u7528\u3059\u308B\u4ED5\u69D8\u306E\u305F\u3081\uFF08\u7D4C\u7CF8\u3068\u7DEF\u7CF8\u306F\u540C\u3058\u7E4A\u7DAD\u304C\u76F4\u4EA4\u3057\u3066\u3044\u308B\u3060\u3051\u3001\u3068\u3044\u3046\u69CB\u9020\u3092\u518D\u73FE\u3059\u308B\u305F\u3081\uFF09\u3001\u3053\u3053\u3067\u72EC\u7ACB\u64CD\u4F5C\u3067\u304D\u308B\u306E\u306F feBlend \u306E\u5408\u6210\u30E2\u30FC\u30C9\u306E\u307F\u3067\u3059\u30022\u672C\u76EE\u306E\u30CE\u30A4\u30BA\u81EA\u4F53\u3092\u8ABF\u6574\u3057\u305F\u3044\u5834\u5408\u306F\u300C1. \u30CE\u30A4\u30BA\u751F\u6210\u300D\u3067\u300CX/Y\u306E\u5468\u6CE2\u6570\u3092\u72EC\u7ACB\u3055\u305B\u308B\u300D\u3092ON\u306B\u3057\u3066\u5468\u6CE2\u6570X/Y\u3092\u5909\u66F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002",
+      en: `Overlays two perpendicular noise fields to create directional woven/linen-like texture (the same family of technique as Reference [1]'s p-lin / p-canevas). Uses two elements, feTurbulence and feBlend \u2014 but the second feTurbulence automatically reuses "1. Noise Generation"'s frequency with X and Y swapped, plus the same octave count (this reproduces the idea that warp and weft are the same fiber, just crossed at a right angle), so the only thing independently adjustable here is feBlend's blend mode. To adjust the second noise field itself, turn on "Make X/Y frequency independent" in "1. Noise Generation" and change the X/Y frequency there.`
+    },
+    fields: [
+      {
+        bind: "weave.enabled",
+        label: {
+          ja: "\u6709\u52B9\u5316",
+          en: "Enable"
+        },
+        type: "checkbox"
+      },
+      {
+        bind: "weave.blend",
+        label: {
+          ja: "\u5408\u6210\u30E2\u30FC\u30C9",
+          en: "Blend mode"
+        },
+        type: "select",
+        options: [
+          [
+            "multiply",
+            {
+              ja: "multiply",
+              en: "multiply"
+            }
+          ],
+          [
+            "overlay",
+            {
+              ja: "overlay",
+              en: "overlay"
+            }
+          ],
+          [
+            "screen",
+            {
+              ja: "screen",
+              en: "screen"
+            }
+          ],
+          [
+            "darken",
+            {
+              ja: "darken",
+              en: "darken"
+            }
+          ]
+        ],
+        anno: {
+          chain: [
+            "feBlend"
+          ],
+          attr: "mode"
+        }
+      }
+    ]
+  },
+  {
+    key: "pulp",
+    title: {
+      ja: "3. \u30D1\u30EB\u30D7\u7E4A\u7DAD\u30EC\u30A4\u30E4\u30FC",
+      en: "3. Pulp Fiber Layer"
+    },
+    desc: {
+      ja: "\u7D30\u304B\u3044\u7D19\u7C89\u30CE\u30A4\u30BA\u306B\u3001\u307C\u304B\u3057\u305F\u592A\u3044\u7E4A\u7DAD\u30CE\u30A4\u30BA\u3092\u91CD\u306D\u308B\uFF08\u7C73\u7D19\u30FB\u9EBB\u7D19\u5411\u3051\u3001\u53C2\u8003[1]\u306E p-riz \u306E\u8003\u3048\u65B9\uFF09\u3002feTurbulence / feGaussianBlur / feColorMatrix / feBlend \u306E4\u8981\u7D20\u3092\u4F7F\u3044\u307E\u3059\u3002",
+      en: "Layers a coarser, blurred fiber-noise field over fine paper-dust noise (for rice paper / hemp paper, following the idea behind Reference [1]'s p-riz). Uses four elements: feTurbulence / feGaussianBlur / feColorMatrix / feBlend."
+    },
+    fields: [
+      {
+        bind: "pulp.enabled",
+        label: {
+          ja: "\u6709\u52B9\u5316",
+          en: "Enable"
+        },
+        type: "checkbox"
+      },
+      {
+        bind: "pulp.fiberFreq",
+        label: {
+          ja: "\u7E4A\u7DAD\u306E\u7C97\u3055",
+          en: "Fiber coarseness"
+        },
+        type: "range",
+        min: 0.01,
+        max: 0.5,
+        step: 5e-3,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "baseFrequency"
+        }
+      },
+      {
+        bind: "pulp.fiberOctaves",
+        label: {
+          ja: "\u7E4A\u7DAD\u30AA\u30AF\u30BF\u30FC\u30D6",
+          en: "Fiber octaves"
+        },
+        type: "range",
+        min: 1,
+        max: 5,
+        step: 1,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "numOctaves"
+        }
+      },
+      {
+        bind: "pulp.blur",
+        label: {
+          ja: "\u307C\u304B\u3057\u91CF",
+          en: "Blur amount"
+        },
+        type: "range",
+        min: 0,
+        max: 6,
+        step: 0.1,
+        anno: {
+          chain: [
+            "feGaussianBlur"
+          ],
+          attr: "stdDeviation"
+        }
+      },
+      {
+        bind: "pulp.fiberAlpha",
+        label: {
+          ja: "\u7E4A\u7DAD\u306E\u6FC3\u3055",
+          en: "Fiber density"
+        },
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.05,
+        anno: {
+          chain: [
+            "feColorMatrix"
+          ],
+          attr: "values"
+        }
+      }
+    ]
+  },
+  {
+    key: "distort",
+    title: {
+      ja: "4. \u6B6A\u307F",
+      en: "4. Distortion"
+    },
+    desc: {
+      ja: "\u5225\u306E\u30CE\u30A4\u30BA\u3067\u30D1\u30BF\u30FC\u30F3\u81EA\u4F53\u3092\u6B6A\u307E\u305B\u308B\uFF08\u53C2\u8003[2]\u306E\u300Ctorn edges\u300D\u624B\u6CD5\u3002\u6A39\u76AE\u7D19\u3084\u30C7\u30B3\u30DC\u30B3\u306E\u7E01\u306E\u8868\u73FE\u306B\uFF09\u3002feTurbulence \u3068 feDisplacementMap \u306E2\u8981\u7D20\u3092\u4F7F\u3044\u307E\u3059\u3002",
+      en: `Warps the pattern itself using a separate noise field (Reference [2]'s "torn edges" technique \u2014 useful for bark paper or ragged, uneven edges). Uses two elements, feTurbulence and feDisplacementMap.`
+    },
+    fields: [
+      {
+        bind: "distort.enabled",
+        label: {
+          ja: "\u6709\u52B9\u5316",
+          en: "Enable"
+        },
+        type: "checkbox"
+      },
+      {
+        bind: "distort.freq",
+        label: {
+          ja: "\u6B6A\u307F\u30CE\u30A4\u30BA\u306E\u5468\u6CE2\u6570",
+          en: "Distortion noise frequency"
+        },
+        type: "range",
+        min: 2e-3,
+        max: 0.1,
+        step: 1e-3,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "baseFrequency"
+        }
+      },
+      {
+        bind: "distort.octaves",
+        label: {
+          ja: "\u6B6A\u307F\u30AA\u30AF\u30BF\u30FC\u30D6",
+          en: "Distortion octaves"
+        },
+        type: "range",
+        min: 1,
+        max: 5,
+        step: 1,
+        anno: {
+          chain: [
+            "feTurbulence"
+          ],
+          attr: "numOctaves"
+        }
+      },
+      {
+        bind: "distort.scale",
+        label: {
+          ja: "\u6B6A\u307F\u91CF",
+          en: "Distortion amount"
+        },
+        type: "range",
+        min: 0,
+        max: 80,
+        step: 1,
+        anno: {
+          chain: [
+            "feDisplacementMap"
+          ],
+          attr: "scale"
+        }
+      }
+    ]
+  },
+  {
+    key: "light",
+    title: {
+      ja: "5. \u30E9\u30A4\u30C6\u30A3\u30F3\u30B0\uFF08\u51F9\u51F8\u8868\u73FE\uFF09",
+      en: "5. Lighting (Surface Relief)"
+    },
+    desc: {
+      ja: "\u30CE\u30A4\u30BA\u3092\u9AD8\u3055\u60C5\u5831\u3068\u3057\u3066\u6271\u3044\u3001\u4EEE\u60F3\u5149\u6E90\u3067\u9670\u5F71\u3092\u3064\u3051\u308B\uFF08\u53C2\u8003[3]\u306E roughpaper \u624B\u6CD5\u305D\u306E\u3082\u306E\uFF09\u3002feDiffuseLighting / feSpecularLighting \u3068\u305D\u306E\u5B50\u8981\u7D20 feDistantLight \u3092\u4F7F\u3044\u307E\u3059\u3002",
+      en: "Treats the noise as height data and shades it with a virtual light source (exactly Reference [3]'s rough-paper technique). Uses feDiffuseLighting / feSpecularLighting and their child element feDistantLight."
+    },
+    fields: [
+      {
+        bind: "light.mode",
+        label: {
+          ja: "\u30E2\u30FC\u30C9",
+          en: "Mode"
+        },
+        type: "select",
+        options: [
+          [
+            "diffuse",
+            {
+              ja: "\u62E1\u6563\u53CD\u5C04\uFF08\u30DE\u30C3\u30C8\uFF09",
+              en: "Diffuse (matte)"
+            }
+          ],
+          [
+            "specular",
+            {
+              ja: "\u93E1\u9762\u53CD\u5C04\uFF08\u5149\u6CA2\uFF09",
+              en: "Specular (glossy)"
+            }
+          ],
+          [
+            "none",
+            {
+              ja: "\u306A\u3057",
+              en: "None"
+            }
+          ]
+        ],
+        anno: {
+          chain: [
+            "feDiffuseLighting/feSpecularLighting"
+          ],
+          attr: "mode"
+        }
+      },
+      {
+        bind: "light.surfaceScale",
+        label: {
+          ja: "\u51F9\u51F8\u306E\u9AD8\u3055",
+          en: "Relief height"
+        },
+        type: "range",
+        min: 0.1,
+        max: 6,
+        step: 0.1,
+        anno: {
+          chain: [
+            "feDiffuseLighting/feSpecularLighting"
+          ],
+          attr: "surfaceScale"
+        }
+      },
+      {
+        bind: "light.azimuth",
+        label: {
+          ja: "\u5149\u6E90\u306E\u65B9\u4F4D\u89D2",
+          en: "Light azimuth"
+        },
+        type: "range",
+        min: 0,
+        max: 360,
+        step: 1,
+        anno: {
+          chain: [
+            "feDiffuseLighting/feSpecularLighting",
+            "feDistantLight"
+          ],
+          attr: "azimuth"
+        }
+      },
+      {
+        bind: "light.elevation",
+        label: {
+          ja: "\u5149\u6E90\u306E\u9AD8\u5EA6",
+          en: "Light elevation"
+        },
+        type: "range",
+        min: 5,
+        max: 90,
+        step: 1,
+        anno: {
+          chain: [
+            "feDiffuseLighting/feSpecularLighting",
+            "feDistantLight"
+          ],
+          attr: "elevation"
+        }
+      },
+      {
+        bind: "light.specExp",
+        label: {
+          ja: "\u5149\u6CA2\u306E\u92ED\u3055\uFF08\u93E1\u9762\u53CD\u5C04\u6642\uFF09",
+          en: "Highlight sharpness (specular only)"
+        },
+        type: "range",
+        min: 1,
+        max: 60,
+        step: 1,
+        anno: {
+          chain: [
+            "feSpecularLighting"
+          ],
+          attr: "specularExponent"
+        }
+      },
+      {
+        bind: "light.color",
+        label: {
+          ja: "\u5149\u306E\u8272",
+          en: "Light color"
+        },
+        type: "color",
+        anno: {
+          chain: [
+            "feDiffuseLighting/feSpecularLighting"
+          ],
+          attr: "lighting-color"
+        }
+      }
+    ]
+  },
+  {
+    key: "tint",
+    title: {
+      ja: "6. \u7740\u8272\uFF0F\u30B7\u30DF",
+      en: "6. Tinting / Staining"
+    },
+    desc: {
+      ja: "\u9670\u5F71\u30DE\u30C3\u30D7\u306B\u8272\u76F8\u3092\u4E0E\u3048\u305F\u308A\u3001\u3057\u304D\u3044\u5024\u3067\u6591\u70B9\u30FB\u7E4A\u7DAD\u306E\u6FC3\u6DE1\u3092\u4F5C\u308B\u3002feColorMatrix \u3068 feComponentTransfer(+feFuncR/G/B) \u306E\u3044\u305A\u308C\u304B\u3092\u4F7F\u3044\u307E\u3059\u3002",
+      en: "Adds hue to the shading map, or uses a threshold to create spots and fiber-density variation. Uses either feColorMatrix or feComponentTransfer (+feFuncR/G/B)."
+    },
+    fields: [
+      {
+        bind: "tint.mode",
+        label: {
+          ja: "\u30E2\u30FC\u30C9",
+          en: "Mode"
+        },
+        type: "select",
+        options: [
+          [
+            "none",
+            {
+              ja: "\u306A\u3057\uFF08\u30B0\u30EC\u30FC\u968E\u8ABF\u306E\u307E\u307E\uFF09",
+              en: "None (stay grayscale)"
+            }
+          ],
+          [
+            "alpha",
+            {
+              ja: "\u30A2\u30EB\u30D5\u30A1\u6FC3\u6DE1\uFF08\u7E4A\u7DAD\u306E\u7C92\u7ACB\u3061\u30FB\u7C73\u7D19\u7CFB\uFF09",
+              en: "Alpha grain (fibrous speckle \u2014 rice-paper family)"
+            }
+          ],
+          [
+            "stainMottle",
+            {
+              ja: "\u9023\u7D9A\u30E0\u30E9\u67D3\u307F\uFF08\u30AF\u30E9\u30D5\u30C8\u7D19\u578B\uFF09",
+              en: "Continuous mottle (Kraft-paper type)"
+            }
+          ],
+          [
+            "stainSpots",
+            {
+              ja: "\u6591\u70B9\u30FB\u30B7\u30DF\uFF08\u30D5\u30A9\u30AF\u30B7\u30F3\u30B0\u578B\uFF09",
+              en: "Spots / stains (foxing type)"
+            }
+          ],
+          [
+            "stainHaze",
+            {
+              ja: "\u6DE1\u3044\u5168\u4F53\u30E0\u30E9\uFF08\u65B0\u805E\u7D19\u578B\uFF09",
+              en: "Faint overall haze (newsprint type)"
+            }
+          ],
+          [
+            "table",
+            {
+              ja: "\u968E\u8ABF\u30C6\u30FC\u30D6\u30EB\uFF08\u7C92\u72B6\u611F\u30FB\u9769\u76EE\u7CFB\uFF09",
+              en: "Tone table (grainy \u2014 leather-grain family)"
+            }
+          ]
+        ]
+      },
+      {
+        bind: "tint.grainAlpha",
+        label: {
+          ja: "\u7C92\uFF0F\u30E0\u30E9\u306E\u6FC3\u3055\uFF08\u30A2\u30EB\u30D5\u30A1\u6FC3\u6DE1\u30FB\u6DE1\u3044\u30E0\u30E9\u30E2\u30FC\u30C9\uFF09",
+          en: "Grain / haze density (alpha & faint-haze modes)"
+        },
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        anno: {
+          chain: [
+            "feColorMatrix"
+          ],
+          attr: "values"
+        }
+      },
+      {
+        bind: "tint.color",
+        label: {
+          ja: "\u7740\u8272",
+          en: "Tint color"
+        },
+        type: "color",
+        anno: {
+          chain: [
+            "feColorMatrix"
+          ],
+          attr: "values"
+        }
+      },
+      {
+        bind: "tint.alphaSlope",
+        label: {
+          ja: "\u30E0\u30E9\u30FB\u6591\u70B9\u306E\u51FA\u65B9\uFF08\u50BE\u304D\uFF09",
+          en: "Mottle/spot response (slope)"
+        },
+        type: "range",
+        min: -3,
+        max: 3,
+        step: 0.1,
+        anno: {
+          chain: [
+            "feColorMatrix"
+          ],
+          attr: "values"
+        }
+      },
+      {
+        bind: "tint.alphaBias",
+        label: {
+          ja: "\u30E0\u30E9\u30FB\u6591\u70B9\u306E\u3057\u304D\u3044\u5024",
+          en: "Mottle/spot threshold"
+        },
+        type: "range",
+        min: -3,
+        max: 1,
+        step: 0.1,
+        anno: {
+          chain: [
+            "feColorMatrix"
+          ],
+          attr: "values"
+        }
+      },
+      {
+        bind: "tint.levels",
+        label: {
+          ja: "\u968E\u8ABF\u30C6\u30FC\u30D6\u30EB\u306E\u6BB5\u6570",
+          en: "Tone-table steps"
+        },
+        type: "range",
+        min: 2,
+        max: 9,
+        step: 1,
+        anno: {
+          chain: [
+            "feComponentTransfer",
+            "feFuncR/feFuncG/feFuncB"
+          ],
+          attr: "tableValues"
+        }
+      }
+    ]
+  },
+  {
+    key: "composite",
+    title: {
+      ja: "7. \u5408\u6210\uFF0F\u53F0\u7D19\u306E\u8272",
+      en: "7. Compositing / Backing Sheet Color"
+    },
+    desc: {
+      ja: "\u751F\u6210\u3057\u305F\u30C6\u30AF\u30B9\u30C1\u30E3\u3092\u53F0\u7D19\u306E\u8272\uFF08SourceGraphic\uFF09\u3068\u5408\u6210\u3059\u308B\u6700\u7D42\u6BB5\u3002feBlend \u3068\u3001\u53F0\u7D19\u3068\u306A\u308B rect \u8981\u7D20\u3092\u4F7F\u3044\u307E\u3059\u3002",
+      en: "The final stage: blends the generated texture with the backing sheet's own color (SourceGraphic). Uses feBlend and the rect elements that make up the backing sheet."
+    },
+    fields: [
+      {
+        bind: "composite.blend",
+        label: {
+          ja: "\u5408\u6210\u30E2\u30FC\u30C9",
+          en: "Blend mode"
+        },
+        type: "select",
+        options: [
+          [
+            "multiply",
+            {
+              ja: "multiply",
+              en: "multiply"
+            }
+          ],
+          [
+            "screen",
+            {
+              ja: "screen",
+              en: "screen"
+            }
+          ],
+          [
+            "overlay",
+            {
+              ja: "overlay",
+              en: "overlay"
+            }
+          ],
+          [
+            "normal",
+            {
+              ja: "normal",
+              en: "normal"
+            }
+          ],
+          [
+            "darken",
+            {
+              ja: "darken",
+              en: "darken"
+            }
+          ],
+          [
+            "soft-light",
+            {
+              ja: "soft-light",
+              en: "soft-light"
+            }
+          ]
+        ],
+        anno: {
+          chain: [
+            "feBlend"
+          ],
+          attr: "mode"
+        }
+      },
+      {
+        bind: "composite.finalOpacity",
+        label: {
+          ja: "\u30C6\u30AF\u30B9\u30C1\u30E3\u5C64\u306E\u4E0D\u900F\u660E\u5EA6",
+          en: "Texture layer opacity"
+        },
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.05,
+        anno: {
+          chain: [
+            "rect"
+          ],
+          attr: "opacity"
+        }
+      },
+      {
+        bind: "base.fillColor",
+        label: {
+          ja: "\u53F0\u7D19\u306E\u8272\uFF08\u4E0B\u5730\uFF09",
+          en: "Backing color (base layer)"
+        },
+        type: "color",
+        anno: {
+          chain: [
+            "rect"
+          ],
+          attr: "fill"
+        }
+      },
+      {
+        bind: "base.highlightColor",
+        label: {
+          ja: "\u53F0\u7D19\u306E\u8272\uFF08\u30C6\u30AF\u30B9\u30C1\u30E3\u5C64\uFF09",
+          en: "Backing color (texture layer)"
+        },
+        type: "color",
+        anno: {
+          chain: [
+            "rect"
+          ],
+          attr: "fill"
+        }
+      }
+    ]
+  },
+  {
+    key: "canvas",
+    title: {
+      ja: "\u30AD\u30E3\u30F3\u30D0\u30B9",
+      en: "Canvas"
+    },
+    desc: {
+      ja: "\u30D7\u30EC\u30D3\u30E5\u30FCSVG\u306E\u5185\u90E8\u5EA7\u6A19\u30B5\u30A4\u30BA\u3002svg \u8981\u7D20\u306E viewBox \u3092\u76F4\u63A5\u64CD\u4F5C\u3057\u307E\u3059\u3002",
+      en: "The internal coordinate size of the preview SVG. Directly controls the svg element's viewBox."
+    },
+    fields: [
+      {
+        bind: "canvas.size",
+        label: {
+          ja: "viewBox\u30B5\u30A4\u30BA",
+          en: "viewBox size"
+        },
+        type: "range",
+        min: 120,
+        max: 600,
+        step: 10,
+        anno: {
+          chain: [
+            "svg"
+          ],
+          attr: "viewBox"
+        }
+      }
+    ]
+  }
+];
+function findBasePreset(r) {
+  return PRESETS.find((p) => p.key === r.base);
+}
+function resolveOriginal(r) {
+  return deepMerge(deepMerge(deepClone(DEFAULTS), findBasePreset(r).state), r.state);
+}
+
+// src/js/params-ui.js
+function sectionTokens(key, st) {
+  const set = /* @__PURE__ */ new Set();
+  switch (key) {
+    case "noise":
+      set.add("feTurbulence");
+      break;
+    case "weave":
+      if (st.weave.enabled) {
+        set.add("feTurbulence");
+        set.add("feBlend");
+      }
+      break;
+    case "pulp":
+      if (st.pulp.enabled) {
+        set.add("feTurbulence");
+        set.add("feGaussianBlur");
+        set.add("feColorMatrix");
+        set.add("feBlend");
+      }
+      break;
+    case "distort":
+      if (st.distort.enabled) {
+        set.add("feTurbulence");
+        set.add("feDisplacementMap");
+      }
+      break;
+    case "light":
+      if (st.light.mode === "diffuse") {
+        set.add("feDiffuseLighting/feSpecularLighting");
+        set.add("feDistantLight");
+      } else if (st.light.mode === "specular") {
+        set.add("feDiffuseLighting/feSpecularLighting");
+        set.add("feDistantLight");
+        set.add("feSpecularLighting");
+      }
+      break;
+    case "tint":
+      if (st.tint.mode === "table") {
+        set.add("feComponentTransfer");
+        set.add("feFuncR/feFuncG/feFuncB");
+      } else if (st.tint.mode && st.tint.mode !== "none") {
+        set.add("feColorMatrix");
+      }
+      break;
+    case "composite":
+      set.add("feBlend");
+      set.add("rect");
+      break;
+    case "canvas":
+      set.add("svg");
+      break;
+  }
+  return TOKEN_ORDER.filter((t) => set.has(t));
+}
+var STATIC_SECTION_TOKENS = {
+  noise: [
+    "feTurbulence"
+  ],
+  weave: [
+    "feTurbulence",
+    "feBlend"
+  ],
+  pulp: [
+    "feTurbulence",
+    "feGaussianBlur",
+    "feColorMatrix",
+    "feBlend"
+  ],
+  distort: [
+    "feTurbulence",
+    "feDisplacementMap"
+  ],
+  light: [
+    "feDiffuseLighting/feSpecularLighting",
+    "feDistantLight",
+    "feSpecularLighting"
+  ],
+  tint: [
+    "feColorMatrix",
+    "feComponentTransfer",
+    "feFuncR/feFuncG/feFuncB"
+  ],
+  composite: [
+    "feBlend",
+    "rect"
+  ],
+  canvas: [
+    "svg"
+  ]
+};
+function allTokens(st) {
+  const set = /* @__PURE__ */ new Set();
+  [
+    "noise",
+    "weave",
+    "pulp",
+    "distort",
+    "light",
+    "tint",
+    "composite",
+    "canvas"
+  ].forEach((key) => {
+    sectionTokens(key, st).forEach((t) => set.add(t));
+  });
+  return TOKEN_ORDER.filter((t) => set.has(t));
+}
+function dotsHTML(tokens, activeSet) {
+  return tokens.map((t) => {
+    const dim = activeSet && !activeSet.has(t);
+    return `<span class="fdot${dim ? " dim" : ""}" style="background:${ELEMENT_COLORS[t]}" title="${t}"></span>`;
+  }).join("");
+}
+var RESET_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+function annoHTML(anno) {
+  if (!anno) return "";
+  const parts = [];
+  (anno.chain || []).forEach((name) => {
+    const color = ELEMENT_COLORS[name] || "#888";
+    parts.push(`<span class="badge" style="background:${color}">${name}</span>`);
+  });
+  parts.push(`<span class="anno-attr">${anno.attr}</span>`);
+  return parts.join('<span class="anno-sep">\u203A</span>');
+}
+function sectionNumberOf(titleJa, fallback) {
+  const m = titleJa.match(/^(\d+)\./);
+  return m ? parseInt(m[1]) : fallback;
+}
+function syncDisplay(root, input) {
+  if (input.type === "range") {
+    const span = root.querySelector(`[data-valuefor="${input.dataset.bind}"]`);
+    if (span) span.textContent = input.value;
+  }
+}
+function setFieldDisabled(root, bind, disabled) {
+  const input = root.querySelector(`[data-bind="${bind}"]`);
+  if (!input) return;
+  input.disabled = disabled;
+  const field = input.closest(".field");
+  if (field) field.classList.toggle("is-disabled", disabled);
+}
+function syncConditionalControls(root, state) {
+  setFieldDisabled(root, "noise.freqY", !state.noise.anisotropic);
+  setFieldDisabled(root, "weave.blend", !state.weave.enabled);
+  [
+    "pulp.fiberFreq",
+    "pulp.fiberOctaves",
+    "pulp.blur",
+    "pulp.fiberAlpha"
+  ].forEach((b) => setFieldDisabled(root, b, !state.pulp.enabled));
+  [
+    "distort.freq",
+    "distort.octaves",
+    "distort.scale"
+  ].forEach((b) => setFieldDisabled(root, b, !state.distort.enabled));
+  const lightOff = state.light.mode === "none";
+  setFieldDisabled(root, "light.surfaceScale", lightOff);
+  setFieldDisabled(root, "light.azimuth", lightOff);
+  setFieldDisabled(root, "light.elevation", lightOff);
+  setFieldDisabled(root, "light.color", lightOff);
+  setFieldDisabled(root, "light.specExp", lightOff || state.light.mode !== "specular");
+  const tintMode = state.tint.mode;
+  setFieldDisabled(root, "tint.grainAlpha", !(tintMode === "alpha" || tintMode === "stainHaze"));
+  setFieldDisabled(root, "tint.color", !(tintMode === "stainMottle" || tintMode === "stainSpots" || tintMode === "stainHaze"));
+  setFieldDisabled(root, "tint.alphaSlope", !(tintMode === "stainMottle" || tintMode === "stainSpots"));
+  setFieldDisabled(root, "tint.alphaBias", !(tintMode === "stainMottle" || tintMode === "stainSpots"));
+  setFieldDisabled(root, "tint.levels", tintMode !== "table");
+}
+function setControlsFromState(root, state) {
+  root.querySelectorAll("[data-bind]").forEach((input) => {
+    const v = getPath(state, input.dataset.bind);
+    if (input.type === "checkbox") input.checked = !!v;
+    else input.value = v;
+    syncDisplay(root, input);
+  });
+  syncConditionalControls(root, state);
+}
+function bindParamInputs(root, hooks) {
+  root.querySelectorAll("[data-bind]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const path = input.dataset.bind;
+      let val;
+      if (input.type === "checkbox") val = input.checked;
+      else if (input.type === "range") val = parseFloat(input.value);
+      else val = input.value;
+      setPath(hooks.getState(), path, val);
+      syncDisplay(root, input);
+      syncConditionalControls(root, hooks.getState());
+      hooks.onChange(path);
+    });
+  });
+}
+function buildSectionDom(section, ctx) {
+  const det = document.createElement("details");
+  det.className = "section";
+  det.dataset.key = section.key;
+  det.open = !!ctx.open;
+  const summary = document.createElement("summary");
+  const titleRow = document.createElement("span");
+  titleRow.className = "sec-title-row";
+  const titleText = document.createElement("span");
+  titleText.textContent = ctx.T(section.title);
+  const dots = document.createElement("span");
+  dots.className = "fdots";
+  ctx.dotsRegistry[section.key] = dots;
+  titleRow.appendChild(titleText);
+  titleRow.appendChild(dots);
+  summary.appendChild(titleRow);
+  const numMatch = section.title.ja.match(/^(\d+)\./);
+  if (numMatch && ctx.onReset) {
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "sec-reset";
+    resetBtn.dataset.sectionNumber = numMatch[1];
+    resetBtn.title = ctx.resetTitle;
+    resetBtn.setAttribute("aria-label", ctx.resetTitle);
+    resetBtn.innerHTML = RESET_ICON_SVG;
+    resetBtn.hidden = true;
+    resetBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      ctx.onReset(section.key);
+    });
+    summary.appendChild(resetBtn);
+  }
+  det.appendChild(summary);
+  const body = document.createElement("div");
+  body.className = "body";
+  const descEl = document.createElement("p");
+  descEl.className = "desc";
+  descEl.textContent = ctx.T(section.desc);
+  body.appendChild(descEl);
+  section.fields.forEach((f) => {
+    const wrap = document.createElement("div");
+    if (f.type === "checkbox") {
+      wrap.className = "field checkline";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.bind = f.bind;
+      const label = document.createElement("label");
+      label.textContent = ctx.T(f.label);
+      wrap.appendChild(input);
+      wrap.appendChild(label);
+    } else {
+      wrap.className = "field";
+      const label = document.createElement("label");
+      const titleRow2 = document.createElement("div");
+      titleRow2.className = "ftitle-row";
+      const span = document.createElement("span");
+      span.textContent = ctx.T(f.label);
+      const vspan = document.createElement("span");
+      vspan.className = "v";
+      vspan.dataset.valuefor = f.bind;
+      titleRow2.appendChild(span);
+      if (f.type === "range") titleRow2.appendChild(vspan);
+      label.appendChild(titleRow2);
+      if (f.anno) {
+        const annoRow = document.createElement("div");
+        annoRow.className = "fanno-row";
+        annoRow.innerHTML = annoHTML(f.anno);
+        label.appendChild(annoRow);
+      }
+      wrap.appendChild(label);
+      let input;
+      if (f.type === "select") {
+        input = document.createElement("select");
+        f.options.forEach(([val, labelPair]) => {
+          const opt = document.createElement("option");
+          opt.value = val;
+          opt.textContent = ctx.T(labelPair);
+          input.appendChild(opt);
+        });
+      } else if (f.type === "color") {
+        input = document.createElement("input");
+        input.type = "color";
+      } else {
+        input = document.createElement("input");
+        input.type = "range";
+        input.min = f.min;
+        input.max = f.max;
+        input.step = f.step;
+      }
+      input.dataset.bind = f.bind;
+      wrap.appendChild(input);
+    }
+    body.appendChild(wrap);
+  });
+  det.appendChild(body);
+  return det;
+}
+function getChangedParameters(currentState, initial, sections, T2) {
+  if (!initial) return [];
+  const changes = [];
+  const sectionNumberMap = {};
+  sections.forEach((section, index) => {
+    sectionNumberMap[section.key] = sectionNumberOf(section.title.ja, index + 1);
+  });
+  const paramMap = {};
+  sections.forEach((section) => {
+    section.fields.forEach((field) => {
+      if (field.anno) {
+        const filterChain = field.anno.chain;
+        const filterColors = filterChain.map((filter) => ELEMENT_COLORS[filter] || "#888");
+        paramMap[field.bind] = {
+          filter: filterChain.join(" \u2192 "),
+          filterColors,
+          attr: field.anno.attr,
+          label: T2(field.label),
+          sectionKey: section.key,
+          sectionNumber: sectionNumberMap[section.key]
+        };
+      }
+    });
+  });
+  const enabledSections = [
+    "weave",
+    "pulp",
+    "distort"
+  ];
+  const keyAttributes = {
+    weave: [
+      "weave.blend"
+    ],
+    pulp: [
+      "pulp.fiberFreq",
+      "pulp.fiberOctaves",
+      "pulp.blur",
+      "pulp.fiberAlpha"
+    ],
+    distort: [
+      "distort.freq",
+      "distort.octaves",
+      "distort.scale"
+    ]
+  };
+  const handledPaths = /* @__PURE__ */ new Set();
+  const initialNoiseFrequency = noiseBaseFrequency(initial);
+  const currentNoiseFrequency = noiseBaseFrequency(currentState);
+  [
+    "noise.anisotropic",
+    "noise.freqX",
+    "noise.freqY"
+  ].forEach((path) => {
+    handledPaths.add(path);
+  });
+  if (currentNoiseFrequency !== initialNoiseFrequency) {
+    changes.push({
+      path: "noise.baseFrequency",
+      filter: "feTurbulence",
+      filterColors: [
+        ELEMENT_COLORS.feTurbulence
+      ],
+      attr: "baseFrequency",
+      label: "baseFrequency",
+      sectionNumber: sectionNumberMap.noise,
+      oldValue: initialNoiseFrequency,
+      newValue: currentNoiseFrequency
+    });
+  }
+  enabledSections.forEach((sectionKey) => {
+    const wasEnabled = getPath(initial, `${sectionKey}.enabled`);
+    const isEnabled = getPath(currentState, `${sectionKey}.enabled`);
+    if (wasEnabled !== isEnabled) {
+      const keyAttrs = keyAttributes[sectionKey] || [];
+      keyAttrs.forEach((attrPath) => {
+        const info = paramMap[attrPath];
+        if (info) {
+          handledPaths.add(attrPath);
+          changes.push({
+            path: attrPath,
+            filter: info.filter,
+            filterColors: info.filterColors,
+            attr: info.attr,
+            label: info.label,
+            sectionNumber: info.sectionNumber,
+            oldValue: wasEnabled ? getPath(initial, attrPath) : void 0,
+            newValue: isEnabled ? getPath(currentState, attrPath) : "Disabled",
+            isDisabled: !isEnabled
+          });
+        }
+      });
+    }
+  });
+  const modeChanges = [
+    {
+      path: "light.mode",
+      filter: "feDiffuseLighting/feSpecularLighting",
+      attr: "mode",
+      sectionKey: "light"
+    },
+    {
+      path: "tint.mode",
+      filter: "feColorMatrix",
+      attr: "mode",
+      sectionKey: "tint"
+    }
+  ];
+  modeChanges.forEach(({ path, filter, attr, sectionKey }) => {
+    const oldMode = getPath(initial, path);
+    const newMode = getPath(currentState, path);
+    if (oldMode !== newMode) {
+      handledPaths.add(path);
+      const sectionNumber = sectionNumberMap[sectionKey] || 1;
+      changes.push({
+        path,
+        filter,
+        filterColors: [
+          ELEMENT_COLORS[filter] || "#888"
+        ],
+        attr,
+        label: path,
+        sectionNumber,
+        oldValue: oldMode,
+        newValue: newMode,
+        isDisabled: newMode === "none"
+      });
+    }
+  });
+  function compare(obj1, obj2, path) {
+    for (const key in obj1) {
+      const currentPath = path ? `${path}.${key}` : key;
+      const val1 = obj1[key];
+      const val2 = obj2[key];
+      if (currentPath.endsWith(".enabled")) continue;
+      if (handledPaths.has(currentPath)) continue;
+      if (val1 && typeof val1 === "object" && !Array.isArray(val1)) {
+        if (val2 && typeof val2 === "object" && !Array.isArray(val2)) {
+          compare(val1, val2, currentPath);
+        }
+      } else if (val1 !== val2) {
+        const info = paramMap[currentPath];
+        if (info) {
+          changes.push({
+            path: currentPath,
+            filter: info.filter,
+            filterColors: info.filterColors,
+            attr: info.attr,
+            label: info.label,
+            sectionNumber: info.sectionNumber,
+            oldValue: val2,
+            newValue: val1
+          });
+        }
+      }
+    }
+  }
+  compare(currentState, initial, "");
+  changes.sort((a, b) => {
+    const numA = a.sectionNumber || 999;
+    const numB = b.sectionNumber || 999;
+    return numA - numB;
+  });
+  return changes;
+}
+function changedSectionNumbers(changes) {
+  return new Set(changes.map((c) => c.sectionNumber).filter((n) => n != null));
+}
+function resetSectionState(state, initialState, sectionKey) {
+  state[sectionKey] = deepClone(initialState[sectionKey]);
+}
+function buildOriginalRow(container, r, ctx) {
+  const row = document.createElement("div");
+  row.className = "recipe-row";
+  const resolved = resolveOriginal(r);
+  const dots = dotsHTML(allTokens(resolved));
+  row.innerHTML = `<span class="no">${r.no}</span><span class="name">${ctx.T(r.label)}<span class="fdots">${dots}</span></span>`;
+  const btn = document.createElement("button");
+  btn.textContent = ctx.loadLabel;
+  btn.addEventListener("click", () => ctx.onLoad(r));
+  row.appendChild(btn);
+  container.appendChild(row);
+}
+function renderChangeList(metaName, metaBody, ctx) {
+  metaName.textContent = ctx.title;
+  if (ctx.changes.length === 0) {
+    metaBody.textContent = ctx.emptyText;
+  } else {
+    metaBody.innerHTML = "";
+    const heading = document.createElement("div");
+    heading.className = "change-heading";
+    heading.textContent = ctx.headingText;
+    metaBody.appendChild(heading);
+    const changeList = document.createElement("div");
+    changeList.className = "change-list";
+    ctx.changes.forEach((change) => {
+      const item = document.createElement("div");
+      item.className = "change-item";
+      const filterNames = change.filter.split(" \u2192 ");
+      const filterBadges = filterNames.map((filterName, i) => {
+        const color = change.filterColors[i] || "#888";
+        return `<span class="change-filter-badge" style="background:${color}">${filterName}</span>`;
+      }).join('<span class="change-sep">\u203A</span>');
+      const displayValue = change.isDisabled ? ctx.disabledText : change.newValue;
+      const valueClass = change.isDisabled ? "change-value-disabled" : "change-value";
+      item.innerHTML = `
+          <span class="change-section-number">${change.sectionNumber}</span>
+          <div class="change-filters">${filterBadges}</div>
+          <span class="change-attr">${change.attr}</span>
+          <span class="${valueClass}">${displayValue}</span>
+        `;
+      changeList.appendChild(item);
+    });
+    metaBody.appendChild(changeList);
+  }
 }
 
 // deno:https://jsr.io/@tksh/stln-codec/0.1.3/src/constants.ts
@@ -2086,14 +3838,16 @@ function texQuery(query) {
   }
   return out;
 }
-function buildShareQuery(current, cmpParams) {
+function buildShareQuery(current, cmpParams, texOverride) {
   const out = new URLSearchParams();
   for (const [key, value] of current) {
     if (!key.startsWith("tex.") && !key.startsWith("cmp.")) {
       out.append(key, value);
     }
   }
-  for (const [key, value] of texQuery(current)) out.append(key, value);
+  for (const [key, value] of texOverride ?? texQuery(current)) {
+    out.append(key, value);
+  }
   for (const [key, value] of cmpParams) out.append(key, value);
   return out;
 }
@@ -2204,6 +3958,42 @@ var UI = {
   illustrationMissing: {
     en: "No illustration parameters \u2014 add a Straightlines share query to preview compositing.",
     ja: "\u30A4\u30E9\u30B9\u30C8\u306E\u30D1\u30E9\u30E1\u30FC\u30BF\u304C\u3042\u308A\u307E\u305B\u3093 \u2014 \u5408\u6210\u30D7\u30EC\u30D3\u30E5\u30FC\u306B\u306F Straightlines \u306E\u5171\u6709\u30AF\u30A8\u30EA\u3092\u8FFD\u52A0\u3057\u3066\u304F\u3060\u3055\u3044\u3002"
+  },
+  texOriginalsTitle: {
+    en: "Original Presets",
+    ja: "\u30AA\u30EA\u30B8\u30CA\u30EB\u30D7\u30EA\u30BB\u30C3\u30C8"
+  },
+  texParamsTitle: {
+    en: "Detailed Parameters",
+    ja: "\u8A73\u7D30\u30D1\u30E9\u30E1\u30FC\u30BF"
+  },
+  texParamsDesc: {
+    en: "Fine-tune the paper texture while viewing the illustration. Dots show which SVG filter elements each section can use \u2014 dimmed while off or unused.",
+    ja: "\u30A4\u30E9\u30B9\u30C8\u3092\u898B\u306A\u304C\u3089\u7D19\u30C6\u30AF\u30B9\u30C1\u30E3\u3092\u5FAE\u8ABF\u6574\u3057\u307E\u3059\u3002\u30C9\u30C3\u30C8\u306F\u5404\u30BB\u30AF\u30B7\u30E7\u30F3\u304C\u4F7F\u3044\u3046\u308BSVG\u30D5\u30A3\u30EB\u30BF\u30FC\u8981\u7D20\u3092\u793A\u3057\u3001\u30AA\u30D5\u30FB\u672A\u4F7F\u7528\u306E\u3082\u306E\u306F\u8584\u304F\u8868\u793A\u3055\u308C\u307E\u3059\u3002"
+  },
+  loadBtn: {
+    en: "Load",
+    ja: "\u8AAD\u307F\u8FBC\u3080"
+  },
+  metaBodyOriginal: {
+    en: "No parameters adjusted",
+    ja: "\u30D1\u30E9\u30E1\u30FC\u30BF\u306F\u8ABF\u6574\u3055\u308C\u3066\u3044\u307E\u305B\u3093"
+  },
+  additionalAdjustmentsTitle: {
+    en: "Additional adjustment parameters:",
+    ja: "\u8FFD\u52A0\u306E\u8ABF\u6574\u9805\u76EE:"
+  },
+  disabledText: {
+    en: "Disabled",
+    ja: "Disabled"
+  },
+  resetSectionBtn: {
+    en: "Reset this section's changes back to the loaded values",
+    ja: "\u3053\u306E\u30BB\u30AF\u30B7\u30E7\u30F3\u306E\u5909\u66F4\u3092\u8AAD\u307F\u8FBC\u307F\u6642\u306E\u5024\u306B\u623B\u3059"
+  },
+  texMetaTitle: {
+    en: "Texture adjustments",
+    ja: "\u30C6\u30AF\u30B9\u30C1\u30E3\u306E\u8ABF\u6574"
   }
 };
 function T(pair) {
@@ -2212,8 +4002,7 @@ function T(pair) {
 function stlnParamsPresent(query) {
   return query.has("bits");
 }
-function textureSummary(query) {
-  const st = decodeTextureToState(query);
+function textureSummary(st) {
   const stages = [
     st.weave.enabled ? "weave" : null,
     st.pulp.enabled ? "pulp" : null,
@@ -2241,6 +4030,7 @@ function applyI18n() {
   set("[data-i18n-settings-note]", T(UI.settingsNote));
   set("[data-i18n-share-title]", T(UI.shareTitle));
   set("[data-i18n-share-note]", T(UI.shareNote));
+  set("[data-i18n-tex-originals-title]", T(UI.texOriginalsTitle));
   const back = document.getElementById("backLink");
   if (back) back.textContent = T(UI.backLink);
   const exportBtn = document.getElementById("exportBtn");
@@ -2258,7 +4048,7 @@ function renderStatus(query) {
   const illustration = document.createElement("p");
   illustration.textContent = stlnParamsPresent(query) ? T(UI.illustrationFound) : T(UI.illustrationMissing);
   const texture = document.createElement("p");
-  texture.textContent = T(textureSummary(query));
+  texture.textContent = T(textureSummary(texState));
   box.appendChild(illustration);
   box.appendChild(texture);
 }
@@ -2269,6 +4059,14 @@ var cmp = {
 var raster = {
   ...DEFAULT_RASTER
 };
+var texState = deepClone(DEFAULTS);
+var texInitial = deepClone(texState);
+var texSelection = {
+  type: "original",
+  item: ORIGINALS[0]
+};
+var texDots = {};
+var texOpenState = null;
 function showError(message, detail) {
   const box = document.getElementById("stlnError");
   if (!box) return;
@@ -2321,11 +4119,12 @@ async function paintComposite(query) {
     return;
   }
   try {
+    const texSnapshot = deepClone(texState);
     const [art, texSvg] = await Promise.all([
       decodeIllustration(query, {
         ignoreBg: settings.ignoreBg
       }),
-      Promise.resolve(decodeTextureToSvg(query))
+      Promise.resolve(generateSVG(texSnapshot))
     ]);
     if (gen !== paintGen) return;
     const { bw, bh } = bitmapSize(rasterSnapshot);
@@ -2343,11 +4142,10 @@ async function paintComposite(query) {
       width: art.width,
       height: art.height
     };
-    const texSize = textureBitmapSize(query);
     const texLayer = {
       img: texImg,
-      width: texSize,
-      height: texSize
+      width: texSnapshot.canvas.size,
+      height: texSnapshot.canvas.size
     };
     if (settings.order === "tex-over-art") {
       paintLayers(ctx, artLayer, texLayer, settings, bw, bh);
@@ -2361,9 +4159,106 @@ async function paintComposite(query) {
     showError(RASTERIZE_FAILED, err instanceof Error ? err.message : String(err));
   }
 }
-function textureBitmapSize(query) {
-  const raw = query.get("tex.sv1.viewBox");
-  return (raw !== null ? parseViewBox(raw) : null) ?? DEFAULTS.canvas.size;
+function refreshTexDots() {
+  const staticTokens = STATIC_SECTION_TOKENS;
+  for (const key of Object.keys(texDots)) {
+    const active = new Set(sectionTokens(key, texState));
+    texDots[key].innerHTML = dotsHTML(staticTokens[key], active);
+  }
+}
+function refreshTexMeta() {
+  const metaName = document.getElementById("stlnMetaName");
+  const metaBody = document.getElementById("stlnMetaBody");
+  if (!metaName || !metaBody) return;
+  const changes = getChangedParameters(texState, texInitial, SECTIONS, T);
+  document.querySelectorAll("#stlnParamsRail .sec-reset").forEach((btn) => {
+    const el = btn;
+    el.hidden = !changedSectionNumbers(changes).has(Number(el.dataset.sectionNumber));
+  });
+  renderChangeList(metaName, metaBody, {
+    title: T(texSelection.item.label),
+    changes,
+    emptyText: T(UI.metaBodyOriginal),
+    headingText: T(UI.additionalAdjustmentsTitle),
+    disabledText: T(UI.disabledText)
+  });
+}
+function onTextureChange() {
+  refreshTexDots();
+  refreshTexMeta();
+  renderStatus(new URLSearchParams(location.search));
+  repaint();
+}
+function resetTexSection(sectionKey) {
+  resetSectionState(texState, texInitial, sectionKey);
+  const rail = document.getElementById("stlnParamsRail");
+  if (rail) setControlsFromState(rail, texState);
+  onTextureChange();
+}
+function loadTexOriginal(r) {
+  texState = resolveOriginal(r);
+  texInitial = deepClone(texState);
+  texSelection = {
+    type: "original",
+    item: r
+  };
+  const rail = document.getElementById("stlnParamsRail");
+  if (rail) setControlsFromState(rail, texState);
+  onTextureChange();
+}
+function buildTexOriginals() {
+  const list = document.getElementById("stlnOriginalList");
+  if (!list) return;
+  list.innerHTML = "";
+  ORIGINALS.forEach((r) => buildOriginalRow(list, r, {
+    T,
+    loadLabel: T(UI.loadBtn),
+    onLoad: loadTexOriginal
+  }));
+}
+function buildTexParams() {
+  const rail = document.getElementById("stlnParamsRail");
+  if (!rail) return;
+  if (texOpenState === null) {
+    const fresh = {};
+    SECTIONS.forEach((s, i) => {
+      fresh[s.key] = i === 0 || i === 4;
+    });
+    texOpenState = fresh;
+  } else {
+    const kept = texOpenState;
+    rail.querySelectorAll("details.section").forEach((d) => {
+      const key = d.dataset.key;
+      if (key !== void 0) kept[key] = d.open;
+    });
+  }
+  const openState = texOpenState;
+  rail.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<h2>${T(UI.texParamsTitle)}</h2><p class="sub">${T(UI.texParamsDesc)}</p>`;
+  rail.appendChild(card);
+  texDots = {};
+  SECTIONS.forEach((section) => {
+    card.appendChild(buildSectionDom(section, {
+      T,
+      dotsRegistry: texDots,
+      open: !!openState[section.key],
+      resetTitle: T(UI.resetSectionBtn),
+      onReset: resetTexSection
+    }));
+  });
+  const metaCard = document.createElement("div");
+  metaCard.className = "card";
+  metaCard.innerHTML = `<h3 id="stlnMetaName"></h3><div id="stlnMetaBody"></div>`;
+  rail.appendChild(metaCard);
+  bindParamInputs(rail, {
+    getState: () => texState,
+    onChange: onTextureChange
+  });
+  setControlsFromState(rail, texState);
+  refreshTexDots();
+  refreshTexMeta();
 }
 function repaint() {
   paintComposite(new URLSearchParams(location.search));
@@ -2540,7 +4435,20 @@ function init() {
   const query = new URLSearchParams(location.search);
   cmp = parseCmpSettings(query);
   raster = parseRasterSettings(query);
+  texState = resolveOriginal(ORIGINALS[0]);
+  if ([
+    ...query.keys()
+  ].some((key) => key.startsWith("tex."))) {
+    texState = decodeTextureToState(query);
+  }
+  texInitial = deepClone(texState);
+  texSelection = {
+    type: "original",
+    item: ORIGINALS[0]
+  };
   renderStatus(query);
+  buildTexOriginals();
+  buildTexParams();
   buildCmpControls();
   buildRasterControls();
   buildShareRow();
@@ -2553,6 +4461,8 @@ function init() {
         lang = next;
         applyI18n();
         renderStatus(new URLSearchParams(location.search));
+        buildTexOriginals();
+        buildTexParams();
         buildCmpControls();
         buildRasterControls();
         buildShareRow();

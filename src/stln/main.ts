@@ -6,12 +6,22 @@
  * imports and ship through `deno task bundle:stln`.
  * See docs/00-overview.md and docs/30-integration-spec.md.
  */
-import {
-  decodeTextureToState,
-  decodeTextureToSvg,
-  parseViewBox,
-} from "../js/tex-codec.js";
+import { decodeTextureToState } from "../js/tex-codec.js";
 import { deepClone, DEFAULTS, generateSVG } from "../js/texture-core.js";
+import { ORIGINALS, resolveOriginal, SECTIONS } from "../js/texture-data.js";
+import {
+  bindParamInputs,
+  buildOriginalRow as buildOriginalRowEl,
+  buildSectionDom,
+  changedSectionNumbers,
+  dotsHTML,
+  getChangedParameters,
+  renderChangeList,
+  resetSectionState,
+  sectionTokens,
+  setControlsFromState,
+  STATIC_SECTION_TOKENS,
+} from "../js/params-ui.js";
 import {
   bitmapSize,
   buildShareQuery,
@@ -99,6 +109,29 @@ const UI: Record<string, Text> = {
     ja:
       "イラストのパラメータがありません — 合成プレビューには Straightlines の共有クエリを追加してください。",
   },
+  texOriginalsTitle: { en: "Original Presets", ja: "オリジナルプリセット" },
+  texParamsTitle: { en: "Detailed Parameters", ja: "詳細パラメータ" },
+  texParamsDesc: {
+    en:
+      "Fine-tune the paper texture while viewing the illustration. Dots show which SVG filter elements each section can use — dimmed while off or unused.",
+    ja:
+      "イラストを見ながら紙テクスチャを微調整します。ドットは各セクションが使いうるSVGフィルター要素を示し、オフ・未使用のものは薄く表示されます。",
+  },
+  loadBtn: { en: "Load", ja: "読み込む" },
+  metaBodyOriginal: {
+    en: "No parameters adjusted",
+    ja: "パラメータは調整されていません",
+  },
+  additionalAdjustmentsTitle: {
+    en: "Additional adjustment parameters:",
+    ja: "追加の調整項目:",
+  },
+  disabledText: { en: "Disabled", ja: "Disabled" },
+  resetSectionBtn: {
+    en: "Reset this section's changes back to the loaded values",
+    ja: "このセクションの変更を読み込み時の値に戻す",
+  },
+  texMetaTitle: { en: "Texture adjustments", ja: "テクスチャの調整" },
 };
 
 function T(pair: Text): string {
@@ -111,8 +144,7 @@ function stlnParamsPresent(query: URLSearchParams): boolean {
   return query.has("bits");
 }
 
-function textureSummary(query: URLSearchParams): Text {
-  const st = decodeTextureToState(query);
+function textureSummary(st: typeof texState): Text {
   const stages = [
     st.weave.enabled ? "weave" : null,
     st.pulp.enabled ? "pulp" : null,
@@ -143,6 +175,7 @@ function applyI18n(): void {
   set("[data-i18n-settings-note]", T(UI.settingsNote));
   set("[data-i18n-share-title]", T(UI.shareTitle));
   set("[data-i18n-share-note]", T(UI.shareNote));
+  set("[data-i18n-tex-originals-title]", T(UI.texOriginalsTitle));
   const back = document.getElementById("backLink");
   if (back) back.textContent = T(UI.backLink);
   const exportBtn = document.getElementById("exportBtn");
@@ -166,7 +199,7 @@ function renderStatus(query: URLSearchParams): void {
     ? T(UI.illustrationFound)
     : T(UI.illustrationMissing);
   const texture = document.createElement("p");
-  texture.textContent = T(textureSummary(query));
+  texture.textContent = T(textureSummary(texState));
   box.appendChild(illustration);
   box.appendChild(texture);
 }
@@ -176,6 +209,17 @@ function renderStatus(query: URLSearchParams): void {
 let paintGen = 0;
 let cmp: CompositeSettings = { ...DEFAULT_CMP };
 let raster: RasterSettings = { ...DEFAULT_RASTER };
+
+/* ---------- editable texture state (shared panes with the pure page) ---------- */
+
+let texState = deepClone(DEFAULTS);
+let texInitial = deepClone(texState);
+let texSelection: { type: string; item: (typeof ORIGINALS)[number] } = {
+  type: "original",
+  item: ORIGINALS[0],
+};
+let texDots: Record<string, HTMLElement> = {};
+let texOpenState: Record<string, boolean> | null = null;
 
 function showError(message: Text, detail?: string): void {
   const box = document.getElementById("stlnError");
@@ -227,9 +271,10 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
     return;
   }
   try {
+    const texSnapshot = deepClone(texState);
     const [art, texSvg] = await Promise.all([
       decodeIllustration(query, { ignoreBg: settings.ignoreBg }),
-      Promise.resolve(decodeTextureToSvg(query)),
+      Promise.resolve(generateSVG(texSnapshot)),
     ]);
     if (gen !== paintGen) return; // stale generation
     const { bw, bh } = bitmapSize(rasterSnapshot);
@@ -243,9 +288,12 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2d context unavailable");
     const artLayer = { img: artImg, width: art.width, height: art.height };
-    // Texture viewBox is always square (tex.sv1); reuse its decoded size.
-    const texSize = textureBitmapSize(query);
-    const texLayer = { img: texImg, width: texSize, height: texSize };
+    // Texture viewBox is always square (tex.sv1); reuse its state size.
+    const texLayer = {
+      img: texImg,
+      width: texSnapshot.canvas.size,
+      height: texSnapshot.canvas.size,
+    };
     if (settings.order === "tex-over-art") {
       paintLayers(ctx, artLayer, texLayer, settings, bw, bh);
     } else {
@@ -262,10 +310,124 @@ async function paintComposite(query: URLSearchParams): Promise<void> {
   }
 }
 
-/* Texture bitmap aspect comes from tex.sv1.viewBox (always square). */
-function textureBitmapSize(query: URLSearchParams): number {
-  const raw = query.get("tex.sv1.viewBox");
-  return (raw !== null ? parseViewBox(raw) : null) ?? DEFAULTS.canvas.size;
+/* ---------- editable texture panes (shared with the pure page) ---------- */
+
+function refreshTexDots(): void {
+  const staticTokens = STATIC_SECTION_TOKENS as Record<string, string[]>;
+  for (const key of Object.keys(texDots)) {
+    const active = new Set(sectionTokens(key, texState));
+    texDots[key].innerHTML = dotsHTML(staticTokens[key], active);
+  }
+}
+
+function refreshTexMeta(): void {
+  const metaName = document.getElementById("stlnMetaName");
+  const metaBody = document.getElementById("stlnMetaBody");
+  if (!metaName || !metaBody) return;
+  const changes = getChangedParameters(texState, texInitial, SECTIONS, T);
+  document.querySelectorAll("#stlnParamsRail .sec-reset").forEach((btn) => {
+    const el = btn as HTMLElement;
+    el.hidden = !changedSectionNumbers(changes).has(
+      Number(el.dataset.sectionNumber),
+    );
+  });
+  renderChangeList(metaName, metaBody, {
+    title: T(texSelection.item.label),
+    changes,
+    emptyText: T(UI.metaBodyOriginal),
+    headingText: T(UI.additionalAdjustmentsTitle),
+    disabledText: T(UI.disabledText),
+  });
+}
+
+function onTextureChange(): void {
+  refreshTexDots();
+  refreshTexMeta();
+  renderStatus(new URLSearchParams(location.search));
+  repaint();
+}
+
+function resetTexSection(sectionKey: string): void {
+  resetSectionState(texState, texInitial, sectionKey);
+  const rail = document.getElementById("stlnParamsRail");
+  if (rail) setControlsFromState(rail, texState);
+  onTextureChange();
+}
+
+function loadTexOriginal(r: (typeof ORIGINALS)[number]): void {
+  texState = resolveOriginal(r);
+  texInitial = deepClone(texState);
+  texSelection = { type: "original", item: r };
+  const rail = document.getElementById("stlnParamsRail");
+  if (rail) setControlsFromState(rail, texState);
+  onTextureChange();
+}
+
+function buildTexOriginals(): void {
+  const list = document.getElementById("stlnOriginalList");
+  if (!list) return;
+  list.innerHTML = "";
+  ORIGINALS.forEach((r) =>
+    buildOriginalRowEl(list, r, {
+      T,
+      loadLabel: T(UI.loadBtn),
+      onLoad: loadTexOriginal,
+    })
+  );
+}
+
+function buildTexParams(): void {
+  const rail = document.getElementById("stlnParamsRail");
+  if (!rail) return;
+  if (texOpenState === null) {
+    const fresh: Record<string, boolean> = {};
+    SECTIONS.forEach((s, i) => {
+      fresh[s.key] = i === 0 || i === 4;
+    });
+    texOpenState = fresh;
+  } else {
+    const kept = texOpenState;
+    rail.querySelectorAll("details.section").forEach((d) => {
+      const key = (d as HTMLElement).dataset.key;
+      if (key !== undefined) kept[key] = (d as HTMLDetailsElement).open;
+    });
+  }
+  const openState: Record<string, boolean> = texOpenState;
+
+  rail.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<h2>${T(UI.texParamsTitle)}</h2><p class="sub">${
+    T(UI.texParamsDesc)
+  }</p>`;
+  rail.appendChild(card);
+
+  texDots = {};
+  SECTIONS.forEach((section) => {
+    card.appendChild(
+      buildSectionDom(section, {
+        T,
+        dotsRegistry: texDots,
+        open: !!openState[section.key],
+        resetTitle: T(UI.resetSectionBtn),
+        onReset: resetTexSection,
+      }),
+    );
+  });
+
+  const metaCard = document.createElement("div");
+  metaCard.className = "card";
+  metaCard.innerHTML =
+    `<h3 id="stlnMetaName"></h3><div id="stlnMetaBody"></div>`;
+  rail.appendChild(metaCard);
+
+  bindParamInputs(rail, {
+    getState: () => texState,
+    onChange: onTextureChange,
+  });
+  setControlsFromState(rail, texState);
+  refreshTexDots();
+  refreshTexMeta();
 }
 
 /* ---------- composite controls (C3) ---------- */
@@ -496,7 +658,17 @@ function init(): void {
   const query = new URLSearchParams(location.search);
   cmp = parseCmpSettings(query);
   raster = parseRasterSettings(query);
+  // Texture editing baseline: first original, overridden by tex.* params.
+  // (Bare stln and cmp.* keys are ignored here.)
+  texState = resolveOriginal(ORIGINALS[0]);
+  if ([...query.keys()].some((key) => key.startsWith("tex."))) {
+    texState = decodeTextureToState(query);
+  }
+  texInitial = deepClone(texState);
+  texSelection = { type: "original", item: ORIGINALS[0] };
   renderStatus(query);
+  buildTexOriginals();
+  buildTexParams();
   buildCmpControls();
   buildRasterControls();
   buildShareRow();
@@ -509,6 +681,8 @@ function init(): void {
         lang = next;
         applyI18n();
         renderStatus(new URLSearchParams(location.search));
+        buildTexOriginals();
+        buildTexParams();
         buildCmpControls();
         buildRasterControls();
         buildShareRow();
