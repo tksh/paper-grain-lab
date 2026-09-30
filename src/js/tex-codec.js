@@ -78,7 +78,7 @@ export const TEX_DEFAULTS = {
   "tex.rc1.fill": "f6f3eb",
   "tex.rc2.fill": "faf8f4",
   "tex.rc2.opacity": "0.9",
-  "tex.sv1.viewBox": "0,0,300,300",
+  "tex.sv1.viewBox": "0_0_300_300",
 };
 
 /* Fixed vocabularies. */
@@ -102,12 +102,14 @@ export function isTexKey(key) {
 /* ---------- scalar value codecs (null = malformed) ---------- */
 
 export function formatNumberList(nums) {
-  return nums.map((n) => fmt(n)).join(",");
+  // Underscore keeps URLs clean: unlike ",", "_" needs no percent-encoding.
+  return nums.map((n) => fmt(n)).join("_");
 }
 
 export function parseNumberList(raw, { minLength = 1, maxLength = 64 } = {}) {
   if (typeof raw !== "string") return null;
-  const parts = raw.split(",").map((s) => s.trim());
+  // Underscore-separated only (same convention as the pfpg artwork site).
+  const parts = raw.split("_");
   if (parts.length < minLength || parts.length > maxLength) return null;
   const nums = parts.map((s) => (s === "" ? NaN : Number(s)));
   if (nums.some((n) => !Number.isFinite(n))) return null;
@@ -115,7 +117,7 @@ export function parseNumberList(raw, { minLength = 1, maxLength = 64 } = {}) {
 }
 
 export function formatFrequency(freqX, freqY, anisotropic) {
-  return anisotropic ? `${fmt(freqX)},${fmt(freqY)}` : fmt(freqX);
+  return anisotropic ? `${fmt(freqX)}_${fmt(freqY)}` : fmt(freqX);
 }
 
 export function stripHash(color) {
@@ -134,7 +136,7 @@ export function addHash(hexNoHash) {
 
 export function parseViewBox(raw) {
   if (typeof raw !== "string") return null;
-  const m = raw.trim().match(/^0,0,(\d+),(\d+)$/);
+  const m = raw.trim().match(/^0_0_(\d+)_(\d+)$/);
   if (!m || m[1] !== m[2]) return null;
   const size = Number(m[1]);
   if (!Number.isInteger(size) || size <= 0) return null;
@@ -142,7 +144,7 @@ export function parseViewBox(raw) {
 }
 
 export function formatViewBox(size) {
-  return `0,0,${size},${size}`;
+  return `0_0_${size}_${size}`;
 }
 
 export function parseInteger(raw) {
@@ -157,10 +159,10 @@ export function parseVocab(raw, list) {
 }
 
 /* ---------- literal matrix builders (mirror the SVG generator math) ----------
- * Each returns the comma-separated URL form of a 20-number feColorMatrix
- * values attribute (SVG uses spaces; URLs use commas). Computed components
+ * Each returns the underscore-separated URL form of a 20-number feColorMatrix
+ * values attribute (SVG uses spaces; URLs use underscores). Computed components
  * go through fmt() exactly as the generator does, so render (A3) stays
- * byte-identical by converting commas back to spaces. */
+ * byte-identical by converting underscores back to spaces. */
 
 function rgb01(color) {
   const { r, g, b } = hexToRgb01(color);
@@ -189,7 +191,7 @@ function cmAlphaValues(grainAlpha) {
     "0",
     fmt(grainAlpha),
     "0",
-  ].join(",");
+  ].join("_");
 }
 
 function cmStainValues(color, slope, bias, spotted) {
@@ -213,7 +215,7 @@ function cmStainValues(color, slope, bias, spotted) {
     "0",
     b,
     ...alphaRow,
-  ].join(",");
+  ].join("_");
 }
 
 function cmHazeValues(color, grainAlpha) {
@@ -239,7 +241,7 @@ function cmHazeValues(color, grainAlpha) {
     "0",
     fmt(grainAlpha),
     "0",
-  ].join(",");
+  ].join("_");
 }
 
 function cmFiberValues(fiberAlpha) {
@@ -264,11 +266,11 @@ function cmFiberValues(fiberAlpha) {
     "0",
     fmt(fiberAlpha),
     "0",
-  ].join(",");
+  ].join("_");
 }
 
 function tableValues(levels) {
-  return Array.from({ length: levels }, (_, i) => i % 2).join(",");
+  return Array.from({ length: levels }, (_, i) => i % 2).join("_");
 }
 
 /* ---------- encode: slider state to URL params ----------
@@ -371,12 +373,12 @@ export function encodeTextureState(st) {
  * back to TEX_DEFAULTS (payloads without a default fall back to zeros, which
  * render the stage inert but keep the page alive). */
 function rawList(params, key) {
-  // Comma- or space-separated literal to space-separated SVG form.
+  // Underscore-separated literal to space-separated SVG form.
   const raw = params.get(key);
   if (typeof raw !== "string") return null;
-  const parts = raw.split(/[\s,]+/).filter((s) => s !== "");
+  const parts = raw.split("_");
   if (parts.length === 0) return null;
-  if (parts.some((s) => !Number.isFinite(Number(s)))) return null;
+  if (parts.some((s) => s === "" || !Number.isFinite(Number(s)))) return null;
   return parts.join(" ");
 }
 
@@ -388,7 +390,7 @@ function singleNumber(params, key, fallbackKey) {
 
 function matrixOrZeros(params, key) {
   // The generator separates the four 5-number rows with double spaces; the
-  // URL carries flat comma lists, so regroup here to stay byte-identical.
+  // URL carries flat underscore lists, so regroup here to stay byte-identical.
   const list = rawList(params, key);
   const nums = list !== null && list.split(" ").length === 20
     ? list.split(" ")
@@ -419,7 +421,7 @@ export function decodeTextureToSvg(params) {
   const L = (ind, s) => lines.push("  ".repeat(ind) + s);
   const size = params.has("tex.sv1.viewBox")
     ? (parseViewBox(params.get("tex.sv1.viewBox")) ?? 300)
-    : Number(TEX_DEFAULTS["tex.sv1.viewBox"].split(",")[2]);
+    : (parseViewBox(TEX_DEFAULTS["tex.sv1.viewBox"]) ?? 300);
 
   L(
     0,

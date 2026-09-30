@@ -175,14 +175,19 @@ Deno.test("key table covers the spec defaults without drift", () => {
 });
 
 Deno.test("scalar codecs accept and reject correctly", () => {
-  assertEquals(tex.parseNumberList("0.05,0.4"), [0.05, 0.4]);
+  assertEquals(tex.parseNumberList("0.05_0.4"), [0.05, 0.4]);
+  assertEquals(tex.parseNumberList("0.05,0.4"), null);
+  assertEquals(tex.parseNumberList("0.05 0.4"), null);
+  assertEquals(tex.formatNumberList([0.05, 0.4]), "0.05_0.4");
   assertEquals(tex.parseNumberList(""), null);
   assertEquals(tex.parseNumberList("a,b"), null);
   assertEquals(tex.stripHash("#FFFFFF"), "ffffff");
   assertEquals(tex.stripHash("#abc"), "aabbcc");
   assertEquals(tex.stripHash("xyz"), null);
-  assertEquals(tex.parseViewBox("0,0,300,300"), 300);
-  assertEquals(tex.parseViewBox("0,0,300,400"), null);
+  assertEquals(tex.parseViewBox("0_0_300_300"), 300);
+  assertEquals(tex.parseViewBox("0,0,300,300"), null);
+  assertEquals(tex.parseViewBox("0_0_300_400"), null);
+  assertEquals(tex.formatViewBox(300), "0_0_300_300");
   assertEquals(tex.parseInteger("3"), 3);
   assertEquals(tex.parseInteger("3.5"), null);
   assertEquals(tex.parseVocab("screen", tex.WEAVE_BLENDS), "screen");
@@ -225,14 +230,14 @@ Deno.test("encode goldens and key hygiene", () => {
     });
     const p = tex.encodeTextureState(st);
     assertEquals(p.get("tex.tint"), "matrix");
-    assertEquals(p.get("tex.cm1.values")!.split(",").length, 20);
+    assertEquals(p.get("tex.cm1.values")!.split("_").length, 20);
   }
   const table = clone(core.DEFAULTS);
   table.tint.mode = "table";
   table.tint.levels = 5;
   const pt = tex.encodeTextureState(table);
   assertEquals(pt.get("tex.tint"), "table");
-  assertEquals(pt.get("tex.ct1.tableValues"), "0,1,0,1,0");
+  assertEquals(pt.get("tex.ct1.tableValues"), "0_1_0_1_0");
 
   const p = tex.encodeTextureState(battery().allOn);
   const keys = [...p.keys()];

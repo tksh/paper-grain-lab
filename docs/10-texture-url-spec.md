@@ -19,8 +19,9 @@ memos for a separate app — deleted).
   values (`alphaSlope`, `alphaBias`). Sliders are input assistance for producing
   literals. Consequence: changing a slider formula never breaks existing URLs.
 - **Flat `key=value` pairs**, one attribute per param, usable with plain
-  `URLSearchParams`. Multi-value attributes use comma separation (`,` needs no
-  percent-encoding in query values).
+  `URLSearchParams`. Multi-value attributes join components with `_` (an
+  unreserved character, so URLs stay clean — the same convention as the pfpg
+  artwork site).
 - **Absent key = default / disabled.** Only non-default values need encoding.
   Unused filters simply never appear.
 
@@ -85,48 +86,51 @@ Short aliases (presence-doubled-as-flag, all under `tex.`):
 Omitted keys fall back to the defaults below. Encoder SHOULD omit default-valued
 keys.
 
-| Key                                                 | Type                       | Default                             |
-| --------------------------------------------------- | -------------------------- | ----------------------------------- |
-| `tex.tb1.type`                                      | `fractalNoise\|turbulence` | `fractalNoise`                      |
-| `tex.tb1.baseFrequency`                             | number or `x,y`            | `0.05`                              |
-| `tex.tb1.numOctaves`                                | int                        | `3`                                 |
-| `tex.tb1.seed`                                      | int                        | `2`                                 |
-| `tex.w`                                             | blend mode                 | _(absent = stage 2 off)_            |
-| `tex.p`                                             | `1`                        | _(absent = stages 3+7 off)_         |
-| `tex.tb3.baseFrequency`                             | number                     | `0.08`                              |
-| `tex.tb3.numOctaves`                                | int                        | `2`                                 |
-| `tex.gb1.stdDeviation`                              | number                     | `1.5`                               |
-| `tex.d`                                             | `1`                        | _(absent = stage 4 off)_            |
-| `tex.tb4.baseFrequency`                             | number                     | `0.01`                              |
-| `tex.tb4.numOctaves`                                | int                        | `2`                                 |
-| `tex.dm1.scale`                                     | number                     | `20`                                |
-| `tex.light`                                         | `diffuse\|specular`        | _(absent = stage 5 off)_            |
-| `tex.dl1.surfaceScale` / `tex.sl1.surfaceScale`     | number                     | `2`                                 |
-| `tex.dl1.azimuth` / `tex.sl1.azimuth`               | number                     | `60`                                |
-| `tex.dl1.elevation` / `tex.sl1.elevation`           | number                     | `55`                                |
-| `tex.dl1.lighting-color` / `tex.sl1.lighting-color` | 6-hex, no `#`              | `ffffff`                            |
-| `tex.sl1.specularExponent`                          | number                     | `12`                                |
-| `tex.tint`                                          | `matrix\|table`            | _(absent = stage 6 off)_            |
-| `tex.cm1.values`                                    | 20 comma-separated numbers | _(required when `tex.tint=matrix`)_ |
-| `tex.ct1.tableValues`                               | N comma-separated numbers  | _(required when `tex.tint=table`)_  |
-| `tex.cm2.values`                                    | 20 comma-separated numbers | _(required when `tex.p=1`)_         |
-| `tex.bl2.mode`                                      | blend mode                 | `multiply`                          |
-| `tex.bl3.mode`                                      | blend mode                 | `multiply`                          |
-| `tex.rc1.fill`                                      | 6-hex, no `#`              | `f6f3eb`                            |
-| `tex.rc2.fill`                                      | 6-hex, no `#`              | `faf8f4`                            |
-| `tex.rc2.opacity`                                   | 0–1                        | `0.9`                               |
-| `tex.sv1.viewBox`                                   | `x,y,w,h`                  | `0,0,300,300`                       |
+| Key                                                 | Type                            | Default                             |
+| --------------------------------------------------- | ------------------------------- | ----------------------------------- |
+| `tex.tb1.type`                                      | `fractalNoise\|turbulence`      | `fractalNoise`                      |
+| `tex.tb1.baseFrequency`                             | number or `x_y`                 | `0.05`                              |
+| `tex.tb1.numOctaves`                                | int                             | `3`                                 |
+| `tex.tb1.seed`                                      | int                             | `2`                                 |
+| `tex.w`                                             | blend mode                      | _(absent = stage 2 off)_            |
+| `tex.p`                                             | `1`                             | _(absent = stages 3+7 off)_         |
+| `tex.tb3.baseFrequency`                             | number                          | `0.08`                              |
+| `tex.tb3.numOctaves`                                | int                             | `2`                                 |
+| `tex.gb1.stdDeviation`                              | number                          | `1.5`                               |
+| `tex.d`                                             | `1`                             | _(absent = stage 4 off)_            |
+| `tex.tb4.baseFrequency`                             | number                          | `0.01`                              |
+| `tex.tb4.numOctaves`                                | int                             | `2`                                 |
+| `tex.dm1.scale`                                     | number                          | `20`                                |
+| `tex.light`                                         | `diffuse\|specular`             | _(absent = stage 5 off)_            |
+| `tex.dl1.surfaceScale` / `tex.sl1.surfaceScale`     | number                          | `2`                                 |
+| `tex.dl1.azimuth` / `tex.sl1.azimuth`               | number                          | `60`                                |
+| `tex.dl1.elevation` / `tex.sl1.elevation`           | number                          | `55`                                |
+| `tex.dl1.lighting-color` / `tex.sl1.lighting-color` | 6-hex, no `#`                   | `ffffff`                            |
+| `tex.sl1.specularExponent`                          | number                          | `12`                                |
+| `tex.tint`                                          | `matrix\|table`                 | _(absent = stage 6 off)_            |
+| `tex.cm1.values`                                    | 20 underscore-separated numbers | _(required when `tex.tint=matrix`)_ |
+| `tex.ct1.tableValues`                               | N underscore-separated numbers  | _(required when `tex.tint=table`)_  |
+| `tex.cm2.values`                                    | 20 underscore-separated numbers | _(required when `tex.p=1`)_         |
+| `tex.bl2.mode`                                      | blend mode                      | `multiply`                          |
+| `tex.bl3.mode`                                      | blend mode                      | `multiply`                          |
+| `tex.rc1.fill`                                      | 6-hex, no `#`                   | `f6f3eb`                            |
+| `tex.rc2.fill`                                      | 6-hex, no `#`                   | `faf8f4`                            |
+| `tex.rc2.opacity`                                   | 0–1                             | `0.9`                               |
+| `tex.sv1.viewBox`                                   | `x_y_w_h`                       | `0_0_300_300`                       |
 
-Value rules: numbers are plain decimal strings; colors strip the leading `#`
-(avoids `%23`); `=1` flag values mean present/true. Reserved-but-currently-fixed
-attributes (`diffuseConstant`, `specularConstant`, `xChannelSelector`,
-`yChannelSelector`, `type="matrix"`) keep their dotted names reserved and are
-never written today.
+Value rules: numbers are plain decimal strings; multi-value attributes join
+components with `_` (an unreserved character, so URLs stay clean — unlike `,`,
+which serializes as `%2C`); colors strip the leading `#` (avoids `%23`); `=1`
+flag values mean present/true. Only `_`-joined values are accepted (the same
+convention as the pfpg artwork site); anything else falls back to defaults.
+Reserved-but-currently-fixed attributes (`diffuseConstant`, `specularConstant`,
+`xChannelSelector`, `yChannelSelector`, `type="matrix"`) keep their dotted names
+reserved and are never written today.
 
 ## 5. Encode (slider state → URL)
 
 For each slot, compute the **literal** from slider state (same math as the SVG
-generator: hex→float color matrix assembly, `x,y` join, `#` strip), then emit
+generator: hex→float color matrix assembly, `x_y` join, `#` strip), then emit
 the key only if it differs from default. Tint families (`alpha`, `stainMottle`,
 `stainSpots`, `stainHaze`) all emit `tex.tint=matrix` plus the resulting
 `tex.cm1.values` — the URL never distinguishes them.
@@ -159,20 +163,20 @@ Rough grain (noise + diffuse light + composite):
 &tex.light=diffuse&tex.dl1.surfaceScale=2&tex.dl1.azimuth=60&tex.dl1.elevation=50&tex.dl1.lighting-color=ffffff
 &tex.bl3.mode=multiply
 &tex.rc1.fill=f6f3eb&tex.rc2.fill=faf8f4&tex.rc2.opacity=0.95
-&tex.sv1.viewBox=0,0,300,300
+&tex.sv1.viewBox=0_0_300_300
 ```
 
 All stages on (weave + pulp + distort + specular + stain):
 
 ```
-?tex.tb1.type=fractalNoise&tex.tb1.baseFrequency=0.05,0.95&tex.tb1.numOctaves=2&tex.tb1.seed=4
+?tex.tb1.type=fractalNoise&tex.tb1.baseFrequency=0.05_0.95&tex.tb1.numOctaves=2&tex.tb1.seed=4
 &tex.w=multiply
 &tex.p=1&tex.tb3.baseFrequency=0.08&tex.tb3.numOctaves=2&tex.gb1.stdDeviation=1.5
 &tex.d=1&tex.tb4.baseFrequency=0.08&tex.tb4.numOctaves=1&tex.dm1.scale=25
 &tex.light=specular&tex.sl1.surfaceScale=0.8&tex.sl1.specularExponent=20&tex.sl1.azimuth=225&tex.sl1.elevation=65&tex.sl1.lighting-color=ffffff
-&tex.tint=matrix&tex.cm1.values=0,0,0,0,0.35,0,0,0,0,0.25,0,0,0,0,0.15,1,0,0,0,0
-&tex.cm2.values=1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0.25,0
+&tex.tint=matrix&tex.cm1.values=0_0_0_0_0.35_0_0_0_0_0.25_0_0_0_0_0.15_1_0_0_0_0
+&tex.cm2.values=1_0_0_0_0_0_1_0_0_0_0_0_1_0_0_0_0_0_0.25_0
 &tex.bl2.mode=multiply&tex.bl3.mode=multiply
 &tex.rc1.fill=f2e9dc&tex.rc2.fill=f2e9dc&tex.rc2.opacity=0.9
-&tex.sv1.viewBox=0,0,300,300
+&tex.sv1.viewBox=0_0_300_300
 ```
