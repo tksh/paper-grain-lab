@@ -65,12 +65,17 @@
     <div class="code-card">
       <div class="code-head">
         <span data-i18n="codeHeadLabel"></span>
-        <span class="code-actions">
-          <button id="linkBtn" data-i18n="linkBtn"></button>
-          <button id="copyBtn" data-i18n="copyBtn"></button>
-        </span>
+        <button id="copyBtn" data-i18n="copyBtn"></button>
       </div>
       <pre class="code" id="codeOut"></pre>
+    </div>
+
+    <div class="link-card">
+      <div class="link-head">
+        <span data-i18n="linkHeadLabel"></span>
+        <button id="linkBtn" data-i18n="copyBtn"></button>
+      </div>
+      <textarea class="link-body" id="linkOut" readonly wrap="soft" aria-label="Share link"></textarea>
     </div>
   </div>
 </div>

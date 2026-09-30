@@ -202,6 +202,68 @@ var TOKEN_ORDER = [
 ];
 
 // src/js/tex-codec.js
+var TEX_KEY_ORDER = [
+  "tex.tb1.type",
+  "tex.tb1.baseFrequency",
+  "tex.tb1.numOctaves",
+  "tex.tb1.seed",
+  "tex.w",
+  "tex.p",
+  "tex.tb3.baseFrequency",
+  "tex.tb3.numOctaves",
+  "tex.gb1.stdDeviation",
+  "tex.d",
+  "tex.tb4.baseFrequency",
+  "tex.tb4.numOctaves",
+  "tex.dm1.scale",
+  "tex.light",
+  "tex.dl1.surfaceScale",
+  "tex.dl1.azimuth",
+  "tex.dl1.elevation",
+  "tex.dl1.lighting-color",
+  "tex.sl1.surfaceScale",
+  "tex.sl1.specularExponent",
+  "tex.sl1.azimuth",
+  "tex.sl1.elevation",
+  "tex.sl1.lighting-color",
+  "tex.tint",
+  "tex.cm1.values",
+  "tex.ct1.tableValues",
+  "tex.cm2.values",
+  "tex.bl2.mode",
+  "tex.bl3.mode",
+  "tex.rc1.fill",
+  "tex.rc2.fill",
+  "tex.rc2.opacity",
+  "tex.sv1.viewBox"
+];
+var TEX_DEFAULTS = {
+  "tex.tb1.type": "fractalNoise",
+  "tex.tb1.baseFrequency": "0.05",
+  "tex.tb1.numOctaves": "3",
+  "tex.tb1.seed": "2",
+  "tex.tb3.baseFrequency": "0.08",
+  "tex.tb3.numOctaves": "2",
+  "tex.gb1.stdDeviation": "1.5",
+  "tex.tb4.baseFrequency": "0.01",
+  "tex.tb4.numOctaves": "2",
+  "tex.dm1.scale": "20",
+  "tex.dl1.surfaceScale": "2",
+  "tex.dl1.azimuth": "60",
+  "tex.dl1.elevation": "55",
+  "tex.dl1.lighting-color": "ffffff",
+  "tex.sl1.surfaceScale": "2",
+  "tex.sl1.specularExponent": "12",
+  "tex.sl1.azimuth": "60",
+  "tex.sl1.elevation": "55",
+  "tex.sl1.lighting-color": "ffffff",
+  "tex.bl2.mode": "multiply",
+  "tex.bl3.mode": "multiply",
+  "tex.rc1.fill": "f6f3eb",
+  "tex.rc2.fill": "faf8f4",
+  "tex.rc2.opacity": "0.9",
+  "tex.sv1.viewBox": "0_0_300_300"
+};
 var NOISE_TYPES = [
   "fractalNoise",
   "turbulence"
@@ -236,6 +298,9 @@ function parseNumberList(raw, { minLength = 1, maxLength = 64 } = {}) {
   if (nums.some((n) => !Number.isFinite(n))) return null;
   return nums;
 }
+function formatFrequency(freqX, freqY, anisotropic) {
+  return anisotropic ? `${fmt(freqX)}_${fmt(freqY)}` : fmt(freqX);
+}
 function stripHash(color) {
   if (typeof color !== "string") return null;
   let hex = color.startsWith("#") ? color.slice(1) : color;
@@ -256,6 +321,9 @@ function parseViewBox(raw) {
   if (!Number.isInteger(size) || size <= 0) return null;
   return size;
 }
+function formatViewBox(size) {
+  return `0_0_${size}_${size}`;
+}
 function parseInteger(raw) {
   if (typeof raw !== "string" || raw.trim() === "") return null;
   const n = Number(raw);
@@ -264,6 +332,188 @@ function parseInteger(raw) {
 }
 function parseVocab(raw, list) {
   return typeof raw === "string" && list.includes(raw) ? raw : null;
+}
+function rgb01(color) {
+  const { r, g, b } = hexToRgb01(color);
+  return [
+    fmt(r),
+    fmt(g),
+    fmt(b)
+  ];
+}
+function cmAlphaValues(grainAlpha) {
+  return [
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    fmt(grainAlpha),
+    "0"
+  ].join("_");
+}
+function cmStainValues(color, slope, bias, spotted) {
+  const [r, g, b] = rgb01(color);
+  const s = fmt(slope), bi = fmt(bias);
+  const alphaRow = spotted ? [
+    s,
+    s,
+    s,
+    "0",
+    bi
+  ] : [
+    s,
+    "0",
+    "0",
+    "0",
+    bi
+  ];
+  return [
+    "0",
+    "0",
+    "0",
+    "0",
+    r,
+    "0",
+    "0",
+    "0",
+    "0",
+    g,
+    "0",
+    "0",
+    "0",
+    "0",
+    b,
+    ...alphaRow
+  ].join("_");
+}
+function cmHazeValues(color, grainAlpha) {
+  const [r, g, b] = rgb01(color);
+  return [
+    "0",
+    "0",
+    "0",
+    "0",
+    r,
+    "0",
+    "0",
+    "0",
+    "0",
+    g,
+    "0",
+    "0",
+    "0",
+    "0",
+    b,
+    "0",
+    "0",
+    "0",
+    fmt(grainAlpha),
+    "0"
+  ].join("_");
+}
+function cmFiberValues(fiberAlpha) {
+  return [
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "1",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    fmt(fiberAlpha),
+    "0"
+  ].join("_");
+}
+function tableValues(levels) {
+  return Array.from({
+    length: levels
+  }, (_, i) => i % 2).join("_");
+}
+function encodeTextureState(st) {
+  const found = /* @__PURE__ */ new Map();
+  const diff = (key, value) => {
+    if (value !== TEX_DEFAULTS[key]) found.set(key, value);
+  };
+  diff("tex.tb1.type", st.noise.type);
+  diff("tex.tb1.baseFrequency", formatFrequency(st.noise.freqX, st.noise.freqY, st.noise.anisotropic));
+  diff("tex.tb1.numOctaves", String(st.noise.octaves));
+  diff("tex.tb1.seed", String(st.noise.seed));
+  if (st.weave.enabled) found.set("tex.w", st.weave.blend);
+  if (st.pulp.enabled) {
+    found.set("tex.p", "1");
+    diff("tex.tb3.baseFrequency", fmt(st.pulp.fiberFreq));
+    diff("tex.tb3.numOctaves", String(st.pulp.fiberOctaves));
+    diff("tex.gb1.stdDeviation", fmt(st.pulp.blur));
+    found.set("tex.cm2.values", cmFiberValues(st.pulp.fiberAlpha));
+  }
+  if (st.distort.enabled) {
+    found.set("tex.d", "1");
+    diff("tex.tb4.baseFrequency", fmt(st.distort.freq));
+    diff("tex.tb4.numOctaves", String(st.distort.octaves));
+    diff("tex.dm1.scale", fmt(st.distort.scale));
+  }
+  if (st.light.mode === "diffuse" || st.light.mode === "specular") {
+    const el = st.light.mode === "diffuse" ? "dl1" : "sl1";
+    found.set("tex.light", st.light.mode);
+    diff(`tex.${el}.surfaceScale`, fmt(st.light.surfaceScale));
+    if (st.light.mode === "specular") {
+      diff(`tex.${el}.specularExponent`, String(st.light.specExp));
+    }
+    diff(`tex.${el}.azimuth`, String(st.light.azimuth));
+    diff(`tex.${el}.elevation`, String(st.light.elevation));
+    diff(`tex.${el}.lighting-color`, stripHash(st.light.color));
+  }
+  if (st.tint.mode === "table") {
+    found.set("tex.tint", "table");
+    found.set("tex.ct1.tableValues", tableValues(st.tint.levels));
+  } else if (st.tint.mode !== "none") {
+    found.set("tex.tint", "matrix");
+    const t = st.tint;
+    if (t.mode === "alpha") {
+      found.set("tex.cm1.values", cmAlphaValues(t.grainAlpha));
+    } else if (t.mode === "stainMottle") {
+      found.set("tex.cm1.values", cmStainValues(t.color, t.alphaSlope, t.alphaBias, false));
+    } else if (t.mode === "stainSpots") {
+      found.set("tex.cm1.values", cmStainValues(t.color, t.alphaSlope, t.alphaBias, true));
+    } else if (t.mode === "stainHaze") {
+      found.set("tex.cm1.values", cmHazeValues(t.color, t.grainAlpha));
+    }
+  }
+  diff("tex.bl3.mode", st.composite.blend);
+  diff("tex.rc1.fill", stripHash(st.base.fillColor));
+  diff("tex.rc2.fill", stripHash(st.base.highlightColor));
+  diff("tex.rc2.opacity", fmt(st.composite.finalOpacity));
+  diff("tex.sv1.viewBox", formatViewBox(st.canvas.size));
+  const params = new URLSearchParams();
+  for (const key of TEX_KEY_ORDER) {
+    if (found.has(key)) params.set(key, found.get(key));
+  }
+  return params;
 }
 function approx(a, b, eps = 1e-6) {
   return Math.abs(a - b) <= eps;
@@ -3935,9 +4185,13 @@ var UI = {
     en: "Copy a URL that reproduces this composite (illustration + texture + settings).",
     ja: "\u3053\u306E\u5408\u6210\u3092\u518D\u73FE\u3059\u308B URL\uFF08\u30A4\u30E9\u30B9\u30C8\uFF0B\u30C6\u30AF\u30B9\u30C1\u30E3\uFF0B\u8A2D\u5B9A\uFF09\u3092\u30B3\u30D4\u30FC\u3057\u307E\u3059\u3002"
   },
-  shareLinkBtn: {
-    en: "Copy link",
-    ja: "\u30EA\u30F3\u30AF\u3092\u30B3\u30D4\u30FC"
+  copyBtn: {
+    en: "Copy",
+    ja: "\u30B3\u30D4\u30FC"
+  },
+  shareLinkTitle: {
+    en: "Share link (illustration + texture + settings)",
+    ja: "\u5171\u6709\u30EA\u30F3\u30AF\uFF08\u30A4\u30E9\u30B9\u30C8\uFF0B\u30C6\u30AF\u30B9\u30C1\u30E3\uFF0B\u8A2D\u5B9A\uFF09"
   },
   copySuccess: {
     en: "Copied",
@@ -3948,8 +4202,8 @@ var UI = {
     ja: "\u30B3\u30D4\u30FC\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F"
   },
   footerNote: {
-    en: "Composite lab: paper texture over Straightlines illustration via Canvas.",
-    ja: "\u5408\u6210\u30E9\u30DC: \u7D19\u30C6\u30AF\u30B9\u30C1\u30E3\u3092 Straightlines \u30A4\u30E9\u30B9\u30C8\u306B Canvas \u5408\u6210\u3057\u307E\u3059\u3002"
+    en: `Composite lab: paper texture over Straightlines illustration via Canvas. A share link reproduces the composite from three parts \u2014 illustration: the artwork itself (bare URL keys; <a href="https://pfpg.pages.dev/?" target="_blank" rel="noopener noreferrer">click here to go to the site for customizing the illustration</a>); texture: the paper-grain settings (tex.* keys); settings: compositing and raster options (cmp.* keys).`,
+    ja: `\u5408\u6210\u30E9\u30DC: \u7D19\u30C6\u30AF\u30B9\u30C1\u30E3\u3092 Straightlines \u30A4\u30E9\u30B9\u30C8\u306B Canvas \u5408\u6210\u3057\u307E\u3059\u3002\u5171\u6709\u30EA\u30F3\u30AF\u306F3\u3064\u306E\u90E8\u5206\u304B\u3089\u5408\u6210\u3092\u518D\u73FE\u3057\u307E\u3059 \u2014 \u30A4\u30E9\u30B9\u30C8: \u753B\u305D\u306E\u3082\u306E\uFF08\u88F8\u306E URL \u30AD\u30FC\u3002<a href="https://pfpg.pages.dev/?" target="_blank" rel="noopener noreferrer">\u30A4\u30E9\u30B9\u30C8\u3092\u30AB\u30B9\u30BF\u30DE\u30A4\u30BA\u3059\u308B\u30B5\u30A4\u30C8\u306F\u3053\u3061\u3089</a>\uFF09\uFF1B\u30C6\u30AF\u30B9\u30C1\u30E3: \u7D19\u76EE\u8A2D\u5B9A\uFF08tex.* \u30AD\u30FC\uFF09\uFF1B\u8A2D\u5B9A\uFF1A\u5408\u6210\u30FB\u30E9\u30B9\u30BF\u30E9\u30A4\u30BA\u306E\u6307\u5B9A\uFF08cmp.* \u30AD\u30FC\uFF09\u3002`
   },
   illustrationFound: {
     en: "Illustration parameters detected.",
@@ -4030,13 +4284,14 @@ function applyI18n() {
   set("[data-i18n-settings-note]", T(UI.settingsNote));
   set("[data-i18n-share-title]", T(UI.shareTitle));
   set("[data-i18n-share-note]", T(UI.shareNote));
+  set("[data-i18n-share-link-title]", T(UI.shareLinkTitle));
   set("[data-i18n-tex-originals-title]", T(UI.texOriginalsTitle));
   const back = document.getElementById("backLink");
   if (back) back.textContent = T(UI.backLink);
   const exportBtn = document.getElementById("exportBtn");
   if (exportBtn) exportBtn.textContent = T(UI.exportBtn);
   const footer = document.getElementById("footerNote");
-  if (footer) footer.textContent = T(UI.footerNote);
+  if (footer) footer.innerHTML = T(UI.footerNote);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.lang === lang);
   });
@@ -4261,6 +4516,7 @@ function buildTexParams() {
   refreshTexMeta();
 }
 function repaint() {
+  refreshSharePane();
   paintComposite(new URLSearchParams(location.search));
 }
 function labeledRow(label) {
@@ -4383,10 +4639,9 @@ function exportPNG() {
   }, "image/png");
 }
 function shareURL() {
-  const query = buildShareQuery(new URLSearchParams(location.search), encodeCmpSettings(cmp, raster));
+  const query = buildShareQuery(new URLSearchParams(location.search), encodeCmpSettings(cmp, raster), encodeTextureState(texState)).toString();
   const base = `${location.origin}${location.pathname}`;
-  const str = query.toString();
-  return str ? `${base}?${str}` : base;
+  return query ? `${base}?${query}` : base;
 }
 function copyText(text) {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
@@ -4412,23 +4667,28 @@ function fallbackCopy(text) {
   ta.remove();
   return ok;
 }
+function refreshSharePane() {
+  const urlOut = document.getElementById("shareUrl");
+  if (urlOut) urlOut.value = shareURL();
+}
 function buildShareRow() {
-  const box = document.getElementById("shareRow");
-  if (!box) return;
-  box.innerHTML = "";
-  const btn = document.createElement("button");
-  btn.textContent = T(UI.shareLinkBtn);
+  const btn = document.getElementById("shareCopyBtn");
+  if (btn) btn.textContent = T(UI.copyBtn);
+  refreshSharePane();
+}
+function bindShareCopy() {
+  const btn = document.getElementById("shareCopyBtn");
+  if (!btn) return;
   btn.addEventListener("click", () => {
     copyText(shareURL()).then((ok) => {
       const old = btn.textContent;
       btn.textContent = ok ? T(UI.copySuccess) : T(UI.copyFailed);
       setTimeout(() => {
-        btn.textContent = T(UI.shareLinkBtn);
+        btn.textContent = T(UI.copyBtn);
       }, 1400);
       void old;
     });
   });
-  box.appendChild(btn);
 }
 function init() {
   applyI18n();
@@ -4452,6 +4712,7 @@ function init() {
   buildCmpControls();
   buildRasterControls();
   buildShareRow();
+  bindShareCopy();
   paintComposite(query);
   document.getElementById("exportBtn")?.addEventListener("click", exportPNG);
   document.querySelectorAll(".lang-btn").forEach((btn) => {

@@ -45,7 +45,7 @@ import {
     copyBtn: { ja:"コピー", en:"Copy" },
     copySuccess: { ja:"コピーしました", en:"Copied" },
     copyFail: { ja:"コピーできませんでした", en:"Copy failed" },
-    linkBtn: { ja:"リンクをコピー", en:"Copy link" },
+    linkHeadLabel: { ja:"共有リンク（現在の設定を再現するURLパラメータ）", en:"Share link (URL parameters reproducing the current settings)" },
     loadBtn: { ja:"読み込む", en:"Load" },
     metaBodyOriginal: {
       ja:"パラメータは調整されていません",
@@ -98,6 +98,7 @@ import {
   /* ---------- render ---------- */
   const swatchWrap = document.getElementById("swatchWrap");
   const codeOut = document.getElementById("codeOut");
+  const linkOut = document.getElementById("linkOut");
   let sectionDotEls = {};
 
   function render(){
@@ -106,6 +107,7 @@ import {
     // Highlighted view only: spans carry no text of their own, so the copy
     // path (codeOut.textContent) still yields the exact generator output.
     codeOut.innerHTML = highlightSVG(svgString);
+    refreshLinkPane();
     Object.keys(sectionDotEls).forEach(key=>{
       const active = new Set(sectionTokens(key, state));
       sectionDotEls[key].innerHTML = dotsHTML(STATIC_SECTION_TOKENS[key], active);
@@ -260,6 +262,10 @@ import {
     return query ? `${base}?${query}` : base;
   }
 
+  function refreshLinkPane(){
+    if (linkOut) linkOut.value = shareURL();
+  }
+
   function hasTextureParams(){
     try {
       for (const key of new URLSearchParams(location.search).keys()){
@@ -274,10 +280,10 @@ import {
     const flash = (label)=>{
       const old = btn.textContent;
       btn.textContent = label;
-      setTimeout(()=>{ btn.textContent = T(UI.linkBtn); }, 1400);
+      setTimeout(()=>{ btn.textContent = T(UI.copyBtn); }, 1400);
       void old;
     };
-    copyText(shareURL()).then((ok)=>{
+    copyText(linkOut ? linkOut.value : shareURL()).then((ok)=>{
       flash(ok ? T(UI.copySuccess) : T(UI.copyFail));
     });
   });

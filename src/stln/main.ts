@@ -6,7 +6,7 @@
  * imports and ship through `deno task bundle:stln`.
  * See docs/00-overview.md and docs/30-integration-spec.md.
  */
-import { decodeTextureToState } from "../js/tex-codec.js";
+import { decodeTextureToState, encodeTextureState } from "../js/tex-codec.js";
 import { deepClone, DEFAULTS, generateSVG } from "../js/texture-core.js";
 import { ORIGINALS, resolveOriginal, SECTIONS } from "../js/texture-data.js";
 import {
@@ -91,13 +91,18 @@ const UI: Record<string, Text> = {
       "Copy a URL that reproduces this composite (illustration + texture + settings).",
     ja: "この合成を再現する URL（イラスト＋テクスチャ＋設定）をコピーします。",
   },
-  shareLinkBtn: { en: "Copy link", ja: "リンクをコピー" },
+  copyBtn: { en: "Copy", ja: "コピー" },
+  shareLinkTitle: {
+    en: "Share link (illustration + texture + settings)",
+    ja: "共有リンク（イラスト＋テクスチャ＋設定）",
+  },
   copySuccess: { en: "Copied", ja: "コピーしました" },
   copyFailed: { en: "Copy failed", ja: "コピーできませんでした" },
   footerNote: {
     en:
-      "Composite lab: paper texture over Straightlines illustration via Canvas.",
-    ja: "合成ラボ: 紙テクスチャを Straightlines イラストに Canvas 合成します。",
+      `Composite lab: paper texture over Straightlines illustration via Canvas. A share link reproduces the composite from three parts — illustration: the artwork itself (bare URL keys; <a href="https://pfpg.pages.dev/?" target="_blank" rel="noopener noreferrer">click here to go to the site for customizing the illustration</a>); texture: the paper-grain settings (tex.* keys); settings: compositing and raster options (cmp.* keys).`,
+    ja:
+      `合成ラボ: 紙テクスチャを Straightlines イラストに Canvas 合成します。共有リンクは3つの部分から合成を再現します — イラスト: 画そのもの（裸の URL キー。<a href="https://pfpg.pages.dev/?" target="_blank" rel="noopener noreferrer">イラストをカスタマイズするサイトはこちら</a>）；テクスチャ: 紙目設定（tex.* キー）；設定：合成・ラスタライズの指定（cmp.* キー）。`,
   },
   illustrationFound: {
     en: "Illustration parameters detected.",
@@ -175,13 +180,15 @@ function applyI18n(): void {
   set("[data-i18n-settings-note]", T(UI.settingsNote));
   set("[data-i18n-share-title]", T(UI.shareTitle));
   set("[data-i18n-share-note]", T(UI.shareNote));
+  set("[data-i18n-share-link-title]", T(UI.shareLinkTitle));
   set("[data-i18n-tex-originals-title]", T(UI.texOriginalsTitle));
   const back = document.getElementById("backLink");
   if (back) back.textContent = T(UI.backLink);
   const exportBtn = document.getElementById("exportBtn");
   if (exportBtn) exportBtn.textContent = T(UI.exportBtn);
   const footer = document.getElementById("footerNote");
-  if (footer) footer.textContent = T(UI.footerNote);
+  // innerHTML is safe here: the anchor href is a fixed string constant above.
+  if (footer) footer.innerHTML = T(UI.footerNote);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.classList.toggle(
       "active",
@@ -433,6 +440,7 @@ function buildTexParams(): void {
 /* ---------- composite controls (C3) ---------- */
 
 function repaint(): void {
+  refreshSharePane();
   paintComposite(new URLSearchParams(location.search));
 }
 
@@ -598,10 +606,10 @@ function shareURL(): string {
   const query = buildShareQuery(
     new URLSearchParams(location.search),
     encodeCmpSettings(cmp, raster),
-  );
+    encodeTextureState(texState),
+  ).toString();
   const base = `${location.origin}${location.pathname}`;
-  const str = query.toString();
-  return str ? `${base}?${str}` : base;
+  return query ? `${base}?${query}` : base;
 }
 
 function copyText(text: string): Promise<boolean> {
@@ -634,23 +642,32 @@ function fallbackCopy(text: string): boolean {
   return ok;
 }
 
+function refreshSharePane(): void {
+  const urlOut = document.getElementById("shareUrl") as
+    | HTMLTextAreaElement
+    | null;
+  if (urlOut) urlOut.value = shareURL();
+}
+
 function buildShareRow(): void {
-  const box = document.getElementById("shareRow");
-  if (!box) return;
-  box.innerHTML = "";
-  const btn = document.createElement("button");
-  btn.textContent = T(UI.shareLinkBtn);
+  const btn = document.getElementById("shareCopyBtn");
+  if (btn) btn.textContent = T(UI.copyBtn);
+  refreshSharePane();
+}
+
+function bindShareCopy(): void {
+  const btn = document.getElementById("shareCopyBtn");
+  if (!btn) return;
   btn.addEventListener("click", () => {
     copyText(shareURL()).then((ok) => {
       const old = btn.textContent;
       btn.textContent = ok ? T(UI.copySuccess) : T(UI.copyFailed);
       setTimeout(() => {
-        btn.textContent = T(UI.shareLinkBtn);
+        btn.textContent = T(UI.copyBtn);
       }, 1400);
       void old;
     });
   });
-  box.appendChild(btn);
 }
 
 function init(): void {
@@ -672,6 +689,7 @@ function init(): void {
   buildCmpControls();
   buildRasterControls();
   buildShareRow();
+  bindShareCopy();
   paintComposite(query);
   document.getElementById("exportBtn")?.addEventListener("click", exportPNG);
   document.querySelectorAll(".lang-btn").forEach((btn) => {
