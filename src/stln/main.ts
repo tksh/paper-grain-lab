@@ -32,6 +32,7 @@ import {
   DEFAULT_CMP,
   DEFAULT_RASTER,
   encodeCmpSettings,
+  illustrationURL,
   paintLayers,
   parseCmpSettings,
   parseRasterSettings,
@@ -84,12 +85,6 @@ const UI: Record<string, Text> = {
   exportFailed: {
     en: "PNG export failed.",
     ja: "PNG の書き出しに失敗しました。",
-  },
-  shareTitle: { en: "Share", ja: "共有" },
-  shareNote: {
-    en:
-      "Copy a URL that reproduces this composite (illustration + texture + settings).",
-    ja: "この合成を再現する URL（イラスト＋テクスチャ＋設定）をコピーします。",
   },
   copyBtn: { en: "Copy", ja: "コピー" },
   shareLinkTitle: {
@@ -178,8 +173,6 @@ function applyI18n(): void {
   set("[data-i18n-preview-note]", T(UI.previewNote));
   set("[data-i18n-settings-title]", T(UI.settingsTitle));
   set("[data-i18n-settings-note]", T(UI.settingsNote));
-  set("[data-i18n-share-title]", T(UI.shareTitle));
-  set("[data-i18n-share-note]", T(UI.shareNote));
   set("[data-i18n-share-link-title]", T(UI.shareLinkTitle));
   set("[data-i18n-tex-originals-title]", T(UI.texOriginalsTitle));
   const back = document.getElementById("backLink");
@@ -187,8 +180,10 @@ function applyI18n(): void {
   const exportBtn = document.getElementById("exportBtn");
   if (exportBtn) exportBtn.textContent = T(UI.exportBtn);
   const footer = document.getElementById("footerNote");
-  // innerHTML is safe here: the anchor href is a fixed string constant above.
+  // innerHTML is safe here: the template holds a fixed anchor whose href is
+  // replaced with the computed illustration link just below.
   if (footer) footer.innerHTML = T(UI.footerNote);
+  updateFooterIllustrationLink();
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.classList.toggle(
       "active",
@@ -647,6 +642,31 @@ function refreshSharePane(): void {
     | HTMLTextAreaElement
     | null;
   if (urlOut) urlOut.value = shareURL();
+  updateFooterIllustrationLink();
+}
+
+/* ---------- footer illustration link (docs/30 section 5) ---------- */
+
+/** Editor link for the footer anchor: prefer the live share textarea (it
+ * carries the active illustration params), else the active page query;
+ * tex. and cmp. keys are stripped by illustrationURL(). */
+function illustrationHref(): string {
+  const live =
+    (document.getElementById("shareUrl") as HTMLTextAreaElement | null)?.value
+      ?.trim();
+  if (live) {
+    try {
+      return illustrationURL(new URL(live, location.href).searchParams);
+    } catch {
+      // fall through to the active page query
+    }
+  }
+  return illustrationURL(new URLSearchParams(location.search));
+}
+
+function updateFooterIllustrationLink(): void {
+  const anchor = document.getElementById("footerNote")?.querySelector("a");
+  if (anchor) anchor.setAttribute("href", illustrationHref());
 }
 
 function buildShareRow(): void {

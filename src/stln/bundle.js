@@ -2020,7 +2020,7 @@ var SECTIONS = [
         },
         type: "range",
         min: 120,
-        max: 600,
+        max: 2048,
         step: 10,
         anno: {
           chain: [
@@ -4052,6 +4052,11 @@ function bitmapSize(r) {
     bh: Math.round(r.h * r.dpr)
   };
 }
+var ILLUSTRATION_BASE = "https://pfpg.pages.dev/";
+function illustrationURL(query) {
+  const bare = stlnQuery(query).toString();
+  return bare ? `${ILLUSTRATION_BASE}?${bare}` : `${ILLUSTRATION_BASE}?`;
+}
 var CMP_KEY_ORDER = [
   "cmp.order",
   "cmp.mode",
@@ -4177,14 +4182,6 @@ var UI = {
     en: "PNG export failed.",
     ja: "PNG \u306E\u66F8\u304D\u51FA\u3057\u306B\u5931\u6557\u3057\u307E\u3057\u305F\u3002"
   },
-  shareTitle: {
-    en: "Share",
-    ja: "\u5171\u6709"
-  },
-  shareNote: {
-    en: "Copy a URL that reproduces this composite (illustration + texture + settings).",
-    ja: "\u3053\u306E\u5408\u6210\u3092\u518D\u73FE\u3059\u308B URL\uFF08\u30A4\u30E9\u30B9\u30C8\uFF0B\u30C6\u30AF\u30B9\u30C1\u30E3\uFF0B\u8A2D\u5B9A\uFF09\u3092\u30B3\u30D4\u30FC\u3057\u307E\u3059\u3002"
-  },
   copyBtn: {
     en: "Copy",
     ja: "\u30B3\u30D4\u30FC"
@@ -4282,8 +4279,6 @@ function applyI18n() {
   set("[data-i18n-preview-note]", T(UI.previewNote));
   set("[data-i18n-settings-title]", T(UI.settingsTitle));
   set("[data-i18n-settings-note]", T(UI.settingsNote));
-  set("[data-i18n-share-title]", T(UI.shareTitle));
-  set("[data-i18n-share-note]", T(UI.shareNote));
   set("[data-i18n-share-link-title]", T(UI.shareLinkTitle));
   set("[data-i18n-tex-originals-title]", T(UI.texOriginalsTitle));
   const back = document.getElementById("backLink");
@@ -4292,6 +4287,7 @@ function applyI18n() {
   if (exportBtn) exportBtn.textContent = T(UI.exportBtn);
   const footer = document.getElementById("footerNote");
   if (footer) footer.innerHTML = T(UI.footerNote);
+  updateFooterIllustrationLink();
   document.querySelectorAll(".lang-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.lang === lang);
   });
@@ -4670,6 +4666,21 @@ function fallbackCopy(text) {
 function refreshSharePane() {
   const urlOut = document.getElementById("shareUrl");
   if (urlOut) urlOut.value = shareURL();
+  updateFooterIllustrationLink();
+}
+function illustrationHref() {
+  const live = document.getElementById("shareUrl")?.value?.trim();
+  if (live) {
+    try {
+      return illustrationURL(new URL(live, location.href).searchParams);
+    } catch {
+    }
+  }
+  return illustrationURL(new URLSearchParams(location.search));
+}
+function updateFooterIllustrationLink() {
+  const anchor = document.getElementById("footerNote")?.querySelector("a");
+  if (anchor) anchor.setAttribute("href", illustrationHref());
 }
 function buildShareRow() {
   const btn = document.getElementById("shareCopyBtn");

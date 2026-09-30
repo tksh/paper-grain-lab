@@ -69,3 +69,7 @@ Canonical key order for stable, diffable URLs: bare `stln` keys (upstream
 order), then `tex.*` in slot order, then `cmp.*` in `docs/20` table order.
 Omitting a default-valued key and writing it explicitly MUST decode identically
 (round-trip property; covered by tests in Phase 2).
+
+The footer illustration link points at the `pfpg` editor with only the bare
+`stln` keys (`tex.`/`cmp.` keys stripped by `illustrationURL()`), sourced from
+the live share URL when present so manual illustration-param edits survive.

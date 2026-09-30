@@ -13,6 +13,7 @@ import {
   DEFAULT_RASTER,
   encodeCmpSettings,
   illustrationSvg,
+  illustrationURL,
   paintLayers,
   parseCmpSettings,
   parseRasterSettings,
@@ -190,6 +191,23 @@ Deno.test("query partition keeps namespaces apart", () => {
   assertEquals(
     combined.toString(),
     "bits=%7E5&tex.tb1.seed=9&cmp.opacity=0.5",
+  );
+});
+
+Deno.test("illustration link keeps bare keys, strips tex/cmp", () => {
+  assertEquals(
+    illustrationURL(
+      new URLSearchParams("bits=~5&tex.tb1.seed=9&cmp.mode=screen&title=~x"),
+    ),
+    "https://pfpg.pages.dev/?bits=%7E5&title=%7Ex",
+  );
+  assertEquals(
+    illustrationURL(new URLSearchParams("tex.tb1.seed=9&cmp.w=1")),
+    "https://pfpg.pages.dev/?",
+  );
+  assertEquals(
+    illustrationURL(new URLSearchParams("")),
+    "https://pfpg.pages.dev/?",
   );
 });
 

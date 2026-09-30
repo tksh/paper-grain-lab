@@ -239,6 +239,16 @@ export function bitmapSize(r: RasterSettings): { bw: number; bh: number } {
 
 /* ---------- share links (docs/30 section 5) ---------- */
 
+/** Base URL of the Straightlines illustration editor. */
+export const ILLUSTRATION_BASE = "https://pfpg.pages.dev/";
+
+/** Illustration-editor link: bare stln keys only (tex. and cmp. keys stripped), so
+ * manual edits to illustration params in the active URL survive the trip. */
+export function illustrationURL(query: URLSearchParams): string {
+  const bare = stlnQuery(query).toString();
+  return bare ? `${ILLUSTRATION_BASE}?${bare}` : `${ILLUSTRATION_BASE}?`;
+}
+
 const CMP_KEY_ORDER = [
   "cmp.order",
   "cmp.mode",
