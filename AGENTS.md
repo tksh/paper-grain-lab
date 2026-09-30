@@ -14,9 +14,14 @@
 
 - `src/index.html` + `src/js/app.js` + `src/css/styles.css` — pure lab (`/`).
   Legacy vanilla IIFE; English-default bilingual UI; light theme only.
-- `src/stln/index.html` — composite lab (`/stln/`). Shared texture core is
-  reused, never forked. Phase 2 adds `src/stln/main.ts` (bundled, see below).
-- `docs/` — all specs/plans. `tests/` — Deno tests (Phase 1+).
+- `src/stln/index.html` + `src/stln/main.ts` (bundled, see below) — composite
+  lab (`/stln/`).
+- Shared modules (reused by both pages, never forked): `src/js/texture-core.js`
+  (generator + state helpers), `src/js/texture-data.js` (sections/presets),
+  `src/js/params-ui.js` (section DOM, control sync, change tracking),
+  `src/js/tex-codec.js` (`tex.*` codec), `src/js/highlight.js` (code pane),
+  `src/stln/composite.ts` (`cmp.*` + canvas compositing).
+- `docs/` — all specs/plans. `tests/` — Deno tests.
 - No `refs/` directory. Do not recreate it.
 
 ## URL namespaces (hard rules)
