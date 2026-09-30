@@ -795,7 +795,7 @@ export const SECTIONS = [
         label: { ja: "viewBoxサイズ", en: "viewBox size" },
         type: "range",
         min: 120,
-        max: 600,
+        max: 2048,
         step: 10,
         anno: { chain: ["svg"], attr: "viewBox" },
       },
